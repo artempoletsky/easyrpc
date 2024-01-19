@@ -1,0 +1,39 @@
+{
+  "name": "@artempoletsky/easyrpc",
+  "version": "1.0.0",
+  "description": "API and validation library",
+  "types": "build/rpc.d.ts",
+  "main": "build/rpc.js",
+  "scripts": {
+    "build": "rimraf ./build && tsc",
+    "test": "jest"
+  },
+  "keywords": [
+    "API",
+    "validation",
+    "RPC",
+    "client-server"
+  ],
+  "author": "Artem Poletsky",
+  "license": "ISC",
+  "devDependencies": {
+    "@babel/core": "^7.23.5",
+    "@babel/preset-env": "^7.23.5",
+    "@babel/preset-typescript": "^7.23.3",
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.10.3",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2",
+    "rimraf": "^5.0.5",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.3.3"
+  },
+  "exports": {
+    "./client": "./build/client.js",
+    ".": "./build/rpc.js"
+  },
+  "files": [
+    "/build"
+  ]
+}
