@@ -32,7 +32,10 @@ type TMyMethod = {
   etc: any
 }
 
-// then declare a validation rules object. It basically repeats your argument type above in trivial cases. But it can be extened for complex cases. 
+// Then declare a validation rules object. 
+// It basically repeats your argument type above in trivial cases. 
+// But it can be extened for complex cases. 
+
 // the naming prefix `V` stands for Validation
 const VMyMethod: ValidationRule<TMyMethod> = {
   num: "number", //function `validate` will return 400 error if the given parameter is not a number
