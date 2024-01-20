@@ -1,8 +1,8 @@
 
-export function getAPIMethod<MethodType extends (args: any) => any>
-  (route: string, method: string, httpMethod: string = "POST")
-  : (args: Parameters<MethodType>[0]) => Promise<ReturnType<MethodType>> {
-  return function (args) {
+
+export function getAPIMethod<MethodType extends (args: any) => Promise<any>>
+  (route: string, method: string, httpMethod: string = "POST"): MethodType {
+  return <any>function (args: any) {
     return fetch(route, {
       method: httpMethod,
       headers: {
@@ -10,8 +10,8 @@ export function getAPIMethod<MethodType extends (args: any) => any>
       },
       body: JSON.stringify({
         method,
-        args: args
+        args: args || {}
       })
-    }).then(r => r.json() as ReturnType<MethodType>);
+    }).then(r => r.json());
   }
 }

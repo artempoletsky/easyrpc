@@ -376,3 +376,13 @@ export function commonArraysEqualLength(fields: readonly string[]): Validator {
     return true;
   };
 }
+type INextResponse = {
+  json: (result: any, statusObj: { status: number }) => any
+}
+
+export function NextPOST(NextResponse: INextResponse, rules: APIValidationObject, api: APIObject) {
+  return async function (req: any) {
+    let [a, b] = await validate(await req.json(), rules, api);
+    return NextResponse.json(a, b);
+  }
+}
