@@ -1,6 +1,6 @@
 
 
-export function getAPIMethod<MethodType extends (args: any) => Promise<any>>
+export function getAPIMethod<MethodType extends (args: any) => Promise<any> = () => Promise<any>>
   (route: string, method: string, httpMethod: string = "POST"): MethodType {
   return <any>function (args: any) {
     return fetch(route, {

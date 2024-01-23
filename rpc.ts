@@ -329,10 +329,11 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
   let result;
   try {
     result = await api[method](args, payload);
-  } catch (error) {
+  } catch (error: any) {
+    const errorMessage = error.message || error;
     return [
       {
-        message: `Method '${method}' has failed with error: '${error}'`
+        message: `Method '${method}' has failed with error: '${errorMessage}'`
       },
       {
         status: 500
