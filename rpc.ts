@@ -1,3 +1,4 @@
+import { InvalidFieldReason, ValiationErrorResponce } from "./client";
 
 export type APIRequest = {
   method: string,
@@ -39,15 +40,8 @@ export type ValidResult = [any, {
 
 export type APIObject = Record<string, (...args: any) => Promise<any>>;
 
-type InvalidFieldReason = {
-  message: string,
-  userMessage: string,
-}
 
-export type ValiationErrorResponce = {
-  message: string,
-  invalidFields: Record<string, InvalidFieldReason>
-};
+
 
 
 
@@ -67,7 +61,7 @@ function stringifyUnion(union: readonly any[]): string {
 }
 
 export function validateArrayUnionFabric(union: readonly any[]): Validator {
-  return arrayValidatorFabric(stringifyUnion(union), validateUnionFabric(union));
+  return arrayValidatorFabric(stringifyUnion(union) + "[]", validateUnionFabric(union));
 }
 
 export function validateUnionFabric(union: readonly any[]): Validator {
@@ -330,6 +324,15 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
   try {
     result = await api[method](args, payload);
   } catch (error: any) {
+    if (error.status) {    
+      let res: InvalidResult = [
+        error,
+        {
+          status: error.status
+        }
+      ]
+      return res;
+    }
     const errorMessage = error.message || error;
     return [
       {

@@ -1,5 +1,6 @@
 
 
+
 export function getAPIMethod<MethodType extends (args: any) => Promise<any> = () => Promise<any>>
   (route: string, method: string, httpMethod: string = "POST"): MethodType {
   return <any>function (args: any) {
@@ -12,6 +13,25 @@ export function getAPIMethod<MethodType extends (args: any) => Promise<any> = ()
         method,
         args: args || {}
       })
-    }).then(r => r.json());
+    }).then(res => {
+      if (res.ok) {
+        return res.json();
+      }
+
+      return res.json().then(e => {
+        throw e;
+      });
+    });
   }
 }
+
+export type InvalidFieldReason = {
+  message: string,
+  userMessage: string,
+}
+
+export type ValiationErrorResponce = {
+  message: string,
+  invalidFields: Record<string, InvalidFieldReason>
+};
+

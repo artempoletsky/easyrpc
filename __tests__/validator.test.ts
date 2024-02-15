@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeAll } from "@jest/globals";
-import validate, { APIValidationObject, InvalidResult, ValidationRule, Validator, commonArraysEqualLength } from "../rpc";
+import validate, { APIValidationObject, InvalidResult, ValidationRule, Validator, commonArraysEqualLength, validateArrayUnionFabric, validateUnionFabric } from "../rpc";
 
 
 const xdescribe = (...args: any) => { };
@@ -417,5 +417,27 @@ describe("Validator", () => {
     expect(api.methodName).toBeCalledTimes(1);
     expect(api.methodName.mock.calls[0][1].stringLength).toBe(4);
     expect(api.methodName.mock.calls[0][1].secret).toBe(secret);
+  });
+
+  test("union", async () => {
+    const rules: APIValidationObject = {
+      test: {
+        testArg1: ["string", validateUnionFabric(["foo", "bar", "baz"])]
+      }
+    }
+    let res = await validate({
+      method: "test",
+      args: { testArg1: "123" }
+    }, rules);
+    expect(res).toBeTruthy();
+    if (!res) return;
+    expect(res[0].invalidFields.testArg1.message).toBe("expected to be '('foo' | 'bar' | 'baz')' got string: '123'");
+
+    res = await validate({
+      method: "test",
+      args: { testArg1: "bar" }
+    }, rules);
+
+    expect(res).toBeFalsy();
   });
 });
