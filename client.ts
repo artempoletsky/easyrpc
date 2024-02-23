@@ -2,17 +2,18 @@
 
 
 export function getAPIMethod<MethodType extends (args: any) => Promise<any> = () => Promise<any>>
-  (route: string, method: string, options: Record<string, any>): MethodType {
+  (route: string, method: string, options?: Record<string, any>): MethodType {
   if (!options)
     options = {};
 
-  options = {
-    method: "POST",
-    ...options
-  };
+  // options = {
+  //   ...options
+  // };
+
   return <any>function (args: any) {
-    
+
     return fetch(route, {
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
