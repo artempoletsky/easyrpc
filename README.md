@@ -15,7 +15,7 @@ npm install --save @artempoletsky/easyrpc
 
 ## Basic usage
 
-This examples are provided for a next.js route
+Thess examples are provided for a next.js route
 
 ```typescript
 // route.ts
@@ -24,8 +24,8 @@ import { NextRequest, NextResponse } from "next/server";
 import validate, { ValidationRule } from "@artempoletsky/easyrpc";
 
 // at first declare a type for the method argumetns
-// the naming prefix `T` stands for Type. You can use your own naming conventions.
-type TMyMethod = {
+// the naming prefix `A` stands for Argument. You can use your own naming conventions.
+type AMyMethod = {
   num: number
   str: string
   array: number[]
@@ -37,7 +37,7 @@ type TMyMethod = {
 // But it can be extened for complex cases. 
 
 // the naming prefix `V` stands for Validation
-const VMyMethod: ValidationRule<TMyMethod> = {
+const VMyMethod: ValidationRule<AMyMethod> = {
   num: "number", //function `validate` will return 400 error if the given parameter is not a number
   str: "string", //... error if the given parameter is not a string
   array: "number[]", //... error if the given parameter is not an array of numbers
@@ -45,14 +45,14 @@ const VMyMethod: ValidationRule<TMyMethod> = {
 }
 
 //then implement your method 
-async function myMethod({ num, str, array, etc }: TMyMethod){
+async function myMethod({ num, str, array, etc }: AMyMethod){
   // function `validate` will ensure that all args are valid here
   return "Hello RPC!"; // send this as a responce to the client
 }
 
 // export the method signature as a type for using on the client
-// the naming prefix `M` stands for Method
-export type MMyMethod = typeof myMethod;
+// the naming prefix `F` stands for Function
+export type FMyMethod = typeof myMethod;
 
 // next.js API route implementation
 export async function POST(req: NextRequest) {
@@ -77,6 +77,16 @@ export async function POST(req: NextRequest) {
   // if the method name doesn't exist or `args` is invalid `validate` will return 400 and the error message
   return NextResponse.json(result, statusObject);
 }
+```
+
+Also you can use the shortcut `NextPOST` function:
+```typescript
+
+export const POST = NextPOST(NextResponse, {
+  myMethod: VMyMethod, 
+}, {
+  myMethod,
+});
 ```
 
 The client code:
@@ -104,14 +114,4 @@ export default function Page() {
   )
 }
 ```
-
-
-<!-- CONTACT -->
-## Contact
-
-Your Name - [@twitter_handle](https://twitter.com/twitter_handle) - email@email_client.com
-
-Project Link: [https://github.com/github_username/repo_name](https://github.com/github_username/repo_name)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
 

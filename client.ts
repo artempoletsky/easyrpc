@@ -39,7 +39,7 @@ export type InvalidFieldReason = {
   userMessage: string,
 }
 
-export type ValiationErrorResponce = {
+export type ValidationErrorResponce = {
   message: string,
   invalidFields: Record<string, InvalidFieldReason>
 };

@@ -1,4 +1,4 @@
-import { InvalidFieldReason, ValiationErrorResponce } from "./client";
+import { InvalidFieldReason, ValidationErrorResponce } from "./client";
 
 export type APIRequest = {
   method: string,
@@ -29,7 +29,7 @@ export type ValidationRule<Type> =
 
 export type APIValidationObject = Record<string, any>
 
-export type InvalidResult = [ValiationErrorResponce, {
+export type InvalidResult = [ValidationErrorResponce, {
   status: number
 }];
 
