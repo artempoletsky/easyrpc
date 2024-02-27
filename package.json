@@ -1,6 +1,6 @@
 {
   "name": "@artempoletsky/easyrpc",
-  "version": "1.1.3",
+  "version": "1.2.0",
   "description": "API and validation library",
   "types": "build/rpc.d.ts",
   "main": "build/rpc.js",
@@ -36,5 +36,8 @@
   "files": [
     "/build/client.*",
     "/build/rpc.*"
-  ]
+  ],
+  "dependencies": {
+    "zod": "^3.22.4"
+  }
 }

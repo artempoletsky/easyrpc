@@ -1,5 +1,7 @@
 import { describe, expect, test, beforeAll } from "@jest/globals";
-import validate, { APIValidationObject, InvalidResult, ValidationRule, Validator, commonArraysEqualLength, validateArrayUnionFabric, validateUnionFabric } from "../rpc";
+import validate, { APIRequest, APIValidationObject, InvalidResult } from "../rpc";
+import z, { object } from "zod";
+import { InvalidFieldReason, RequestError, formatInvalidField } from "../client";
 
 
 const xdescribe = (...args: any) => { };
@@ -9,9 +11,9 @@ const xtest = (...args: any) => { };
 describe("Validator", () => {
 
   const addTodoRules: APIValidationObject = {
-    addTodo: {
-      name: "string"
-    }
+    addTodo: z.object({
+      name: z.string()
+    })
   };
 
   const correctaddTodoRequest = {
@@ -60,8 +62,7 @@ describe("Validator", () => {
     expect(res.message).toBe(`Bad request`);
 
     expect(res.invalidFields.name).toBeDefined();
-    expect(res.invalidFields.name.message).toBe(`missing`);
-    expect(res.invalidFields.name.userMessage).toBe(`required field`);
+    expect(res.invalidFields.name.message).toBe(`Required`);
   });
 
 
@@ -96,14 +97,14 @@ describe("Validator", () => {
     expect(invalidRes).not.toBe(false);
     if (!invalidRes) return;
 
-    expect(invalidRes[0].invalidFields.name.userMessage).toBe("field is invalid");
+    expect(invalidRes[0].invalidFields.name.message).toBe("Expected string, received null");
   });
 
 
   const arrayExampleRules: APIValidationObject = {
-    sendArray: {
-      array: "string[]"
-    }
+    sendArray: z.object({
+      array: z.array(z.string())
+    })
   };
 
   const correctArrayRequest = {
@@ -131,7 +132,7 @@ describe("Validator", () => {
     }, arrayExampleRules);
     expect(invalidRes).not.toBe(false);
     if (!invalidRes) return;
-    expect(invalidRes[0].invalidFields.array.message).toBe("expected to be 'string[]' got string: 'foo'");
+    expect(invalidRes[0].invalidFields.array.message).toBe("Expected array, received string");
 
 
     const invalidRes2 = await validate({
@@ -143,149 +144,18 @@ describe("Validator", () => {
 
     expect(invalidRes2).not.toBe(false);
     if (!invalidRes2) return;
-    expect(invalidRes2[0].invalidFields.array.message).toBe("element at index: 1 is invalid expected to be 'string' got number: '2'");
+    expect(invalidRes2[0].invalidFields["array.1"].message).toBe("Expected string, received number");
   });
 
-  test("validates common rules", async () => {
-    type TArgs = {
-      a1: number[],
-      a2: number[]
-    }
-    const invalidRequest = {
-      method: "sendTwoArrays",
-      args: {
-        a1: [1, 2],
-        a2: [3, 4, 5]
-      } as TArgs
-    };
-
-    const validRequest = {
-      method: "sendTwoArrays",
-      args: {
-        a1: [1, 2],
-        a2: [3, 4]
-      } as TArgs
-    };
-
-    const customMock: Validator = jest.fn(async ({ method, args }) => true);
-
-    const rules: APIValidationObject = {
-      sendTwoArrays: [
-        {
-          a1: "number[]",
-          a2: "number[]",
-        },
-        commonArraysEqualLength(["a1", "a2"]),
-        customMock,
-      ],
-
-    }
-
-    const validRes = await validate(validRequest, rules);
-    expect(validRes).toBe(false);
-    expect(customMock).toHaveBeenCalledTimes(1);
-
-    expect(((customMock as any).mock.calls[0][0].args as TArgs).a2[1]).toBe(4);
-    expect((customMock as any).mock.calls[0][0].method).toBe("sendTwoArrays");
-
-    const invalidRes = await validate(invalidRequest, rules);
-    expect(invalidRes).not.toBe(false);
-    if (!invalidRes) return;
-
-    expect(invalidRes[0].message).toBe("In method 'sendTwoArrays' arrays expected to have equal length");
-
-
-    const invalidRes2 = await validate({
-      method: "sendTwoArrays",
-      args: {
-        a1: null,
-        a2: [3, 4, 5]
-      }
-    }, rules);
-
-    expect(invalidRes2).not.toBe(false);
-    if (!invalidRes2) return;
-
-    expect(invalidRes2[0].invalidFields.a1.message).toBe("expected to be 'number[]' got object: 'null'");
-  });
-
-  test("supports layered validation rules", async () => {
-    const mock1: Validator = jest.fn(async ({ value }) => value != 0 || "should not be 0");
-    const mock2: Validator = jest.fn(async ({ value }) => value > 0 || "should be greater than zero");
-    const mock3: Validator = jest.fn(async () => "never reach");
-
-    const rules: APIValidationObject = {
-      testMethod: [
-        {
-          testField: ["number", mock1]
-        },
-        {
-          testField: mock2
-        },
-        {
-          testField: mock3
-        }
-      ]
-    };
-
-    const invalidResult1 = await validate({
-      method: "testMethod",
-      args: {
-        testField: ""
-      }
-    }, rules);
-    expect(invalidResult1).not.toBe(false);
-    if (!invalidResult1) return;
-
-    expect(mock1).not.toHaveBeenCalled();
-    expect(invalidResult1[0].invalidFields.testField.message).toBe("expected to be 'number' got string: ''");
-
-    const invalidResult2 = await validate({
-      method: "testMethod",
-      args: {
-        testField: -2
-      }
-    }, rules);
-    expect(invalidResult2).not.toBe(false);
-    if (!invalidResult2) return;
-
-    expect(mock1).toHaveBeenCalledTimes(1);
-    expect(mock2).toHaveBeenCalledTimes(1);
-    expect(mock3).toHaveBeenCalledTimes(0);
-    expect(invalidResult2[0].invalidFields.testField.message).toBe("should be greater than zero");
-  })
-
-  test("empty strings", async () => {
-    const rules: APIValidationObject = {
-      testMethod: {
-        arg1: "stringEmpty",
-        arg2: "string",
-      }
-    };
-
-    const invalidResult1 = await validate({
-      method: "testMethod",
-      args: {
-        arg1: "",
-        arg2: "",
-      }
-    }, rules);
-
-    expect(invalidResult1).not.toBe(false);
-    if (!invalidResult1) return;
-    expect(invalidResult1[0].invalidFields.arg1).not.toBeDefined();
-    expect(invalidResult1[0].invalidFields.arg2.message).toBe("should not be empty");
-    expect(invalidResult1[0].invalidFields.arg2.userMessage).toBe("required field");
-  });
 
   test("validates emails", async () => {
-    const INVALID_EMAIL_STR = "email is invalid";
+    const INVALID_EMAIL_STR = "Invalid email";
 
     const rules: APIValidationObject = {
-      testMethod: {
-        arg1: "email",
-        arg2: "optionalEmail",
-      }
+      testMethod: z.object({
+        arg1: z.string().email(),
+        arg2: z.string().email().optional(),
+      })
     };
 
     const validResult = await validate({
@@ -310,15 +180,14 @@ describe("Validator", () => {
     if (!invalidResult1) return;
 
     expect(invalidResult1[0].invalidFields.arg1.message).toBe(INVALID_EMAIL_STR);
-    expect(invalidResult1[0].invalidFields.arg1.userMessage).toBe(INVALID_EMAIL_STR);
     expect(invalidResult1[0].invalidFields.arg2.message).toBe(INVALID_EMAIL_STR);
-    expect(invalidResult1[0].invalidFields.arg2.userMessage).toBe(INVALID_EMAIL_STR);
+
 
     const invalidResult2 = await validate({
       method: "testMethod",
       args: {
-        arg1: "",
-        arg2: "",
+        arg1: undefined,
+        arg2: undefined,
       }
     }, rules);
 
@@ -326,20 +195,18 @@ describe("Validator", () => {
     if (!invalidResult2) return;
 
     expect(invalidResult2[0].invalidFields.arg2).not.toBeDefined();
-    expect(invalidResult2[0].invalidFields.arg1.message).toBe("should not be empty");
-    expect(invalidResult2[0].invalidFields.arg1.userMessage).toBe("required field");
-
+    expect(invalidResult2[0].invalidFields.arg1.message).toBe("Required");
   });
 
   test("supports nested objects", async () => {
     const rules: APIValidationObject = {
-      methodName: {
-        level1: {
-          level2: {
-            level3: "string"
-          }
-        }
-      }
+      methodName: z.object({
+        level1: z.object({
+          level2: z.object({
+            level3: z.string()
+          })
+        })
+      })
     }
 
     const validResult = await validate({
@@ -368,7 +235,8 @@ describe("Validator", () => {
 
     expect(invalidResult1).not.toBe(false);
     if (!invalidResult1) return;
-    expect(invalidResult1[0].invalidFields.level1.message).toBe("expected to be 'string' got number: '0'");
+
+    expect(invalidResult1[0].invalidFields["level1.level2.level3"].message).toBe("Expected string, received number");
 
 
     const invalidResult2 = await validate({
@@ -381,57 +249,24 @@ describe("Validator", () => {
 
     expect(invalidResult2).not.toBe(false);
     if (!invalidResult2) return;
-    expect(invalidResult2[0].invalidFields.level1.message).toBe("Object is missing field 'level2'");
-
+    expect(invalidResult2[0].invalidFields["level1.level2"].message).toBe("Required");
   });
 
-  test("payload object", async () => { //validators can pass data to the method via payload object
-
-    const secret: number = Math.random();
-
-    const rule1: ValidationRule<any> = [{
-      argument: ["string", async ({ payload, value }) => {
-        payload.stringLength = value.length;
-        return true;
-      }]
-    }, async ({ payload }) => {
-      payload.secret = secret;
-      return true;
-    }
-    ];
-
-    const api = {
-      methodName: jest.fn(async (args, payload) => { })
-    };
-
-    const [res, status] = await validate({
-      method: "methodName",
-      args: {
-        argument: "1234"
-      }
-    }, {
-      methodName: rule1
-    }, api);
-
-    expect(status.status).toBe(200);
-    expect(api.methodName).toBeCalledTimes(1);
-    expect(api.methodName.mock.calls[0][1].stringLength).toBe(4);
-    expect(api.methodName.mock.calls[0][1].secret).toBe(secret);
-  });
 
   test("union", async () => {
     const rules: APIValidationObject = {
-      test: {
-        testArg1: ["string", validateUnionFabric(["foo", "bar", "baz"])]
-      }
+      test: z.object({
+        testArg1: z.union([z.literal("foo"), z.literal("bar"), z.literal("baz")])
+      })
     }
+
     let res = await validate({
       method: "test",
       args: { testArg1: "123" }
     }, rules);
     expect(res).toBeTruthy();
     if (!res) return;
-    expect(res[0].invalidFields.testArg1.message).toBe("expected to be '('foo' | 'bar' | 'baz')' got string: '123'");
+    expect(res[0].invalidFields.testArg1.message).toBe("Invalid input");
 
     res = await validate({
       method: "test",
@@ -439,5 +274,94 @@ describe("Validator", () => {
     }, rules);
 
     expect(res).toBeFalsy();
+  });
+
+
+  test("formatInvalidField", () => {
+    const i18nRU = {
+      "Bad request": "Плохой запрос",
+      "Template {...}": "Шаблон {...}",
+    }
+    const reason1: InvalidFieldReason = {
+      message: "Bad request",
+      args: []
+    };
+    const res1 = formatInvalidField(reason1);
+    expect(res1).toBe("Bad request");
+    const res1RU = formatInvalidField(reason1, i18nRU);
+    expect(res1RU).toBe("Плохой запрос");
+
+    const reason2: InvalidFieldReason = {
+      message: "Missing i18n",
+      args: []
+    };
+    const res2 = formatInvalidField(reason2);
+    expect(res2).toBe("Missing i18n");
+    const res2RU = formatInvalidField(reason2, i18nRU);
+    expect(res2RU).toBe("Missing i18n");
+
+
+    const reason3: InvalidFieldReason = {
+      message: "Template {...}",
+      args: ["foo"],
+    };
+    const res3 = formatInvalidField(reason3);
+    expect(res3).toBe("Template 'foo'");
+
+    const res3RU = formatInvalidField(reason3, i18nRU);
+    expect(res3RU).toBe("Шаблон 'foo'");
+
+
+    const reason4: InvalidFieldReason = {
+      message: "Expected {...} got {...}",
+      args: ["foo", "bar"],
+    };
+    const res4 = formatInvalidField(reason4);
+    expect(res4).toBe("Expected 'foo' got 'bar'");
+
+    const res4RU = formatInvalidField(reason4, i18nRU);
+    expect(res4RU).toBe("Expected 'foo' got 'bar'");
+  });
+
+
+  test("Errors throws", async () => {
+    const request: APIRequest = { method: "test", args: {} };
+    const rules: APIValidationObject = { test: z.object({}) };
+    const fn1 = async () => {
+      throw new RequestError("Test throw");
+    }
+    const result1 = await validate(request, rules, { test: fn1 });
+
+    expect(result1[1].status).toBe(400);
+    expect(result1[0].message).toBe("Test throw");
+
+    const fn2 = async () => {
+      throw new RequestError({
+        message: "Test throw {...}",
+        args: ["2"],
+      });
+    }
+    const result2 = await validate(request, rules, { test: fn2 });
+
+    const invalidMessage2 = formatInvalidField(result2[0]);
+    expect(invalidMessage2).toBe("Test throw '2'");
+
+
+    const fn3 = async () => {
+      throw new RequestError({
+        invalidFields: {
+          test: {
+            message: "Test throw {...}",
+            args: ["3"],
+          }
+        }
+      }, 401);
+    }
+    const result3 = await validate(request, rules, { test: fn3 });
+
+    const invalidMessage3 = formatInvalidField(result3[0].invalidFields.test);
+    expect(invalidMessage3).toBe("Test throw '3'");
+    expect(result3[0].message).toBe("Bad request");
+    expect(result3[1].status).toBe(401);
   });
 });
