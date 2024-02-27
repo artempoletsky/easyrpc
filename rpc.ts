@@ -20,11 +20,11 @@ export type ValidResult = [any, {
 export type APIObject = Record<string, (args: any) => Promise<any>>;
 
 
-function invalidResponce(message: string): InvalidResult {
+function invalidResponce(message: string, args: string[] = []): InvalidResult {
   return [
     {
       message,
-      args: [],
+      args,
       invalidFields: {}
     }, {
       status: 400
@@ -80,7 +80,7 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
   const { method, args } = req;
   const zodRule = rules[method];
   if (!zodRule) {
-    return invalidResponce(`API method '${method}' doesn't exist`);
+    return invalidResponce(`API method {...} doesn't exist`, [method]);
   }
 
   const invalidFields: Record<string, InvalidFieldReason> = {};
@@ -89,20 +89,24 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
   try {
     argsParsed = zodRule.parse(args);
   } catch (zErr: any) {
-    for (const issue of zErr.issues) {
-      const i: ZodIssue = issue;
-      invalidFields[i.path.join(".")] = {
-        message: i.message,
-        args: []
+    if (zErr.issues) {
+      for (const issue of zErr.issues) {
+        invalidFields[issue.path.join(".")] = {
+          message: issue.message,
+          args: []
+        }
       }
-    }
+      const invalidRes: ValidationErrorResponce = {
+        message: "Bad request",
+        args: [],
+        invalidFields,
+      };
 
-    return [{
-      message: "Bad request",
-      invalidFields,
-    }, {
-      status: 400
-    }];
+      return [invalidRes, {
+        status: 400
+      }];
+    }
+    throw zErr;
   }
 
 
@@ -117,6 +121,7 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
     if (err instanceof RequestError) {
       return [{
         message: err.message,
+        args: [],
         ...err.payload,
       }, {
         status: err.statusCode
