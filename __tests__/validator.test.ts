@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeAll } from "@jest/globals";
-import validate, { APIRequest, APIValidationObject, InvalidResult } from "../rpc";
+import validate, { APIRequest, APIValidationObject, InvalidResult, ResponseError } from "../rpc";
 import z, { object } from "zod";
-import { InvalidFieldReason, RequestError, formatInvalidField } from "../client";
+import { InvalidFieldReason, formatInvalidField } from "../client";
 
 
 const xdescribe = (...args: any) => { };
@@ -328,7 +328,7 @@ describe("Validator", () => {
     const request: APIRequest = { method: "test", args: {} };
     const rules: APIValidationObject = { test: z.object({}) };
     const fn1 = async () => {
-      throw new RequestError("Test throw");
+      throw new ResponseError("Test throw");
     }
     const result1 = await validate(request, rules, { test: fn1 });
 
@@ -336,7 +336,7 @@ describe("Validator", () => {
     expect(result1[0].message).toBe("Test throw");
 
     const fn2 = async () => {
-      throw new RequestError({
+      throw new ResponseError({
         message: "Test throw {...}",
         args: ["2"],
       });
@@ -348,7 +348,7 @@ describe("Validator", () => {
 
 
     const fn3 = async () => {
-      throw new RequestError({
+      throw new ResponseError({
         invalidFields: {
           test: {
             message: "Test throw {...}",

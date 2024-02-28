@@ -77,27 +77,3 @@ export type InvalidFieldReason = {
 export type ValidationErrorResponse = InvalidFieldReason & {
   invalidFields: Record<string, InvalidFieldReason>
 };
-
-type PlainObject = Record<string, any>
-
-export class RequestError extends Error {
-  public readonly statusCode;
-  public readonly response;
-  constructor(message: string, statusCode?: number, response?: PlainObject)
-  constructor(response: PlainObject, statusCode?: number)
-  constructor(arg1: string | PlainObject, arg2?: any, arg3?: any) {
-    let message = "Bad request";
-    let payload: PlainObject;
-    let statusCode = arg2 || 400;;
-    if (typeof arg1 == "string") {
-      message = arg1;
-      payload = arg3 || {};
-    } else {
-      payload = arg1;
-    }
-
-    super(message);
-    this.statusCode = statusCode;
-    this.response = payload;
-  }
-}

@@ -1,4 +1,4 @@
-import { InvalidFieldReason, RequestError, ValidationErrorResponse } from "./client";
+import { InvalidFieldReason, ValidationErrorResponse } from "./client";
 import z, { ZodObject } from "zod";
 
 export type APIRequest = {
@@ -80,7 +80,7 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
   const { method, args } = req;
   const zodRule = rules[method];
   if (!zodRule) {
-    return invalidResponse(`API method {...} doesn't exist`, [method]);
+    return invalidResponse(`API method '${method}' doesn't exist`);
   }
 
   const invalidFields: Record<string, InvalidFieldReason> = {};
@@ -118,7 +118,7 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
   try {
     result = await api[method](argsParsed);
   } catch (err: any) {
-    if (err instanceof RequestError) {
+    if (err instanceof ResponseError) {
       return [{
         message: err.message,
         args: [],
@@ -153,5 +153,28 @@ export function NextPOST(NextResponse: INextResponse, rules: APIValidationObject
   return async function (req: any) {
     let [a, b] = await validate(await req.json(), rules, api);
     return NextResponse.json(a, b);
+  }
+}
+
+type PlainObject = Record<string, any>
+export class ResponseError extends Error {
+  public readonly statusCode;
+  public readonly response;
+  constructor(message: string, statusCode?: number, response?: PlainObject)
+  constructor(response: PlainObject, statusCode?: number)
+  constructor(arg1: string | PlainObject, arg2?: any, arg3?: any) {
+    let message = "Bad request";
+    let payload: PlainObject;
+    let statusCode = arg2 || 400;;
+    if (typeof arg1 == "string") {
+      message = arg1;
+      payload = arg3 || {};
+    } else {
+      payload = arg1;
+    }
+
+    super(message);
+    this.statusCode = statusCode;
+    this.response = payload;
   }
 }
