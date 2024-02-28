@@ -56,7 +56,7 @@ export function formatInvalidField(reason: InvalidFieldReason, i18nDict: Record<
 }
 
 export function useMantineRequestError(form: MantineForm, i18nDict: Record<string, string> = {}) {
-  return function setRequestError(err?: ValidationErrorResponce) {
+  return function setRequestError(err?: ValidationErrorResponse) {
     if (!err) {
       form.clearErrors();
     } else {
@@ -74,7 +74,7 @@ export type InvalidFieldReason = {
   args: string[],
 }
 
-export type ValidationErrorResponce = InvalidFieldReason & {
+export type ValidationErrorResponse = InvalidFieldReason & {
   invalidFields: Record<string, InvalidFieldReason>
 };
 
@@ -82,9 +82,9 @@ type PlainObject = Record<string, any>
 
 export class RequestError extends Error {
   public readonly statusCode;
-  public readonly payload;
-  constructor(message: string, statusCode?: number, payload?: PlainObject)
-  constructor(payload: PlainObject, statusCode?: number)
+  public readonly response;
+  constructor(message: string, statusCode?: number, response?: PlainObject)
+  constructor(response: PlainObject, statusCode?: number)
   constructor(arg1: string | PlainObject, arg2?: any, arg3?: any) {
     let message = "Bad request";
     let payload: PlainObject;
@@ -98,6 +98,6 @@ export class RequestError extends Error {
 
     super(message);
     this.statusCode = statusCode;
-    this.payload = payload;
+    this.response = payload;
   }
 }

@@ -1,5 +1,5 @@
-import { InvalidFieldReason, RequestError, ValidationErrorResponce } from "./client";
-import z, { ZodError, ZodIssue, ZodObject } from "zod";
+import { InvalidFieldReason, RequestError, ValidationErrorResponse } from "./client";
+import z, { ZodObject } from "zod";
 
 export type APIRequest = {
   method: string,
@@ -8,7 +8,7 @@ export type APIRequest = {
 
 export type APIValidationObject = Record<string, ZodObject<any>>
 
-export type InvalidResult = [ValidationErrorResponce, {
+export type InvalidResult = [ValidationErrorResponse, {
   status: number
 }];
 
@@ -20,7 +20,7 @@ export type ValidResult = [any, {
 export type APIObject = Record<string, (args: any) => Promise<any>>;
 
 
-function invalidResponce(message: string, args: string[] = []): InvalidResult {
+function invalidResponse(message: string, args: string[] = []): InvalidResult {
   return [
     {
       message,
@@ -80,7 +80,7 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
   const { method, args } = req;
   const zodRule = rules[method];
   if (!zodRule) {
-    return invalidResponce(`API method {...} doesn't exist`, [method]);
+    return invalidResponse(`API method {...} doesn't exist`, [method]);
   }
 
   const invalidFields: Record<string, InvalidFieldReason> = {};
@@ -96,7 +96,7 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
           args: []
         }
       }
-      const invalidRes: ValidationErrorResponce = {
+      const invalidRes: ValidationErrorResponse = {
         message: "Bad request",
         args: [],
         invalidFields,
@@ -122,7 +122,7 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
       return [{
         message: err.message,
         args: [],
-        ...err.payload,
+        ...err.response,
       }, {
         status: err.statusCode
       }];
@@ -130,7 +130,7 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
     throw err;
   }
 
-  if (!result) {
+  if (result === undefined) {
     result = "";
   }
 
