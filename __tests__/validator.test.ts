@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeAll } from "@jest/globals";
 import validate, { APIRequest, APIValidationObject, InvalidResult, ResponseError } from "../rpc";
 import z, { object } from "zod";
-import { InvalidFieldReason, formatInvalidField } from "../client";
+import { InvalidFieldReason, JSONErrorResponse, formatErrorMessage, settings } from "../client";
 
 
 const xdescribe = (...args: any) => { };
@@ -55,14 +55,16 @@ describe("Validator", () => {
       args: {}
     };
 
-    const [res, status] = await validate(incorrectRequest, addTodoRules, api);
+    const [res, status]: [JSONErrorResponse, any] = await validate(incorrectRequest, addTodoRules, api);
     expect(api.addTodo).not.toHaveBeenCalled();
     expect(status.status).toBeLessThan(500);
     expect(status.status).toBeGreaterThanOrEqual(400);
-    expect(res.message).toBe(`Bad request`);
+    expect(res.message).toBe(`Following fields contains errors: name`);
 
     expect(res.invalidFields.name).toBeDefined();
     expect(res.invalidFields.name.message).toBe(`Required`);
+
+    expect(res.preferredErrorDisplay).toBe("field");
   });
 
 
@@ -81,7 +83,7 @@ describe("Validator", () => {
     if (!invalidRes) {
       return;
     }
-    expect(invalidRes[0].message).toBe(`Bad request`);
+    expect(invalidRes[0].message).toBe(`Following fields contains errors: name`);
     expect(invalidRes[0].invalidFields.name).toBeDefined();
   });
 
@@ -286,40 +288,42 @@ describe("Validator", () => {
       message: "Bad request",
       args: []
     };
-    const res1 = formatInvalidField(reason1);
+    const res1 = formatErrorMessage(reason1);
     expect(res1).toBe("Bad request");
-    const res1RU = formatInvalidField(reason1, i18nRU);
-    expect(res1RU).toBe("Плохой запрос");
 
     const reason2: InvalidFieldReason = {
       message: "Missing i18n",
       args: []
     };
-    const res2 = formatInvalidField(reason2);
+    const res2 = formatErrorMessage(reason2);
     expect(res2).toBe("Missing i18n");
-    const res2RU = formatInvalidField(reason2, i18nRU);
-    expect(res2RU).toBe("Missing i18n");
-
 
     const reason3: InvalidFieldReason = {
       message: "Template {...}",
       args: ["foo"],
     };
-    const res3 = formatInvalidField(reason3);
+    const res3 = formatErrorMessage(reason3);
     expect(res3).toBe("Template 'foo'");
-
-    const res3RU = formatInvalidField(reason3, i18nRU);
-    expect(res3RU).toBe("Шаблон 'foo'");
 
 
     const reason4: InvalidFieldReason = {
       message: "Expected {...} got {...}",
       args: ["foo", "bar"],
     };
-    const res4 = formatInvalidField(reason4);
+    const res4 = formatErrorMessage(reason4);
     expect(res4).toBe("Expected 'foo' got 'bar'");
 
-    const res4RU = formatInvalidField(reason4, i18nRU);
+
+    settings({
+      i18n: i18nRU
+    });
+    const res1RU = formatErrorMessage(reason1);
+    expect(res1RU).toBe("Плохой запрос");
+    const res2RU = formatErrorMessage(reason2,);
+    expect(res2RU).toBe("Missing i18n");
+    const res3RU = formatErrorMessage(reason3);
+    expect(res3RU).toBe("Шаблон 'foo'");
+    const res4RU = formatErrorMessage(reason4);
     expect(res4RU).toBe("Expected 'foo' got 'bar'");
   });
 
@@ -330,6 +334,7 @@ describe("Validator", () => {
     const fn1 = async () => {
       throw new ResponseError("Test throw");
     }
+    // debugger;
     const result1 = await validate(request, rules, { test: fn1 });
 
     expect(result1[1].status).toBe(400);
@@ -343,7 +348,7 @@ describe("Validator", () => {
     }
     const result2 = await validate(request, rules, { test: fn2 });
 
-    const invalidMessage2 = formatInvalidField(result2[0]);
+    const invalidMessage2 = formatErrorMessage(result2[0]);
     expect(invalidMessage2).toBe("Test throw '2'");
 
 
@@ -354,14 +359,25 @@ describe("Validator", () => {
             message: "Test throw {...}",
             args: ["3"],
           }
-        }
-      }, 401);
+        },
+        statusCode: 401
+      });
     }
     const result3 = await validate(request, rules, { test: fn3 });
 
-    const invalidMessage3 = formatInvalidField(result3[0].invalidFields.test);
+    const invalidMessage3 = formatErrorMessage(result3[0].invalidFields.test);
     expect(invalidMessage3).toBe("Test throw '3'");
-    expect(result3[0].message).toBe("Bad request");
+    expect(result3[0].message).toBe("Following fields contains errors: test");
     expect(result3[1].status).toBe(401);
+
+
+    const fn4 = async () => {
+      throw new ResponseError("username", "Required", []);
+    }
+    const result4 = await validate(request, rules, { test: fn4 });
+
+    expect(result4[0].invalidFields.username.message).toBe("Required");
   });
+
+
 });

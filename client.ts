@@ -1,14 +1,24 @@
 
 
+function getResponseErrorPromise(res: Response): Promise<JSONErrorResponse> {
+
+  return new Promise((resolve, reject) => {
+    res.json().then(resolve as any).catch(e => {
+      resolve({
+        message: "Unknown error occured (...)",
+        args: [res.status + ""],
+        preferredErrorDisplay: "form",
+        invalidFields: {},
+        statusCode: res.status
+      });
+    });
+  });
+}
 
 export function getAPIMethod<MethodType extends (args: any) => Promise<any> = () => Promise<any>>
   (route: string, method: string, options?: Record<string, any>): MethodType {
   if (!options)
     options = {};
-
-  // options = {
-  //   ...options
-  // };
 
   return <any>function (args: any) {
 
@@ -23,13 +33,9 @@ export function getAPIMethod<MethodType extends (args: any) => Promise<any> = ()
       }),
       ...options,
     }).then(res => {
-      if (res.ok) {
-        return res.json();
-      }
+      if (res.ok) return res.json();
 
-      return res.json().then(e => {
-        throw e;
-      });
+      return getResponseErrorPromise(res).then(e => { throw e });
     });
   }
 }
@@ -39,8 +45,16 @@ type MantineForm = {
   setErrors(arg: Record<string, string>): void
 }
 
-export function formatInvalidField(reason: InvalidFieldReason, i18nDict: Record<string, string> = {}): string {
-  const message: string = i18nDict[reason.message] || reason.message;
+
+export function mainErrorMessage(response?: JSONErrorResponse): string {
+  if (!response) return "";
+  if (response.preferredErrorDisplay == "field") return "";
+  return formatErrorMessage(response);
+}
+
+
+export function formatErrorMessage(reason: InvalidFieldReason): string {
+  const message: string = Settings.i18n[reason.message] || reason.message;
   let parts = message.split("{...}");
   if (parts.length == 1) return parts[0];
 
@@ -52,28 +66,49 @@ export function formatInvalidField(reason: InvalidFieldReason, i18nDict: Record<
       result.push(args[i])
     }
   }
-  return result.join("'");
+  return result.join(Settings.quotesSymbol);
 }
 
-export function useMantineRequestError(form: MantineForm, i18nDict: Record<string, string> = {}) {
-  return function setRequestError(err?: ValidationErrorResponse) {
-    if (!err) {
+
+export function useMantineRequestError(form: MantineForm) {
+  function setRequestError(): void
+  function setRequestError(err: JSONErrorResponse): void
+  function setRequestError(err?: JSONErrorResponse) {
+    if (!err || err.preferredErrorDisplay == "form") {
       form.clearErrors();
     } else {
       const result: any = {};
       for (const key in err.invalidFields) {
-        result[key] = formatInvalidField(err.invalidFields[key], i18nDict);
+        result[key] = formatErrorMessage(err.invalidFields[key]);
       }
       form.setErrors(result);
     }
   }
+  return setRequestError;
 }
 
 export type InvalidFieldReason = {
-  message: string,
-  args: string[],
+  message: string;
+  args: string[];
 }
 
-export type ValidationErrorResponse = InvalidFieldReason & {
-  invalidFields: Record<string, InvalidFieldReason>
+export type JSONErrorResponse = InvalidFieldReason & {
+  invalidFields: Record<string, InvalidFieldReason>;
+  statusCode: number;
+  preferredErrorDisplay: "field" | "form" | "both";
 };
+
+
+type EasyRPCClientSettings = {
+  i18n: Record<string, string>;
+  quotesSymbol: string;
+}
+
+const Settings: EasyRPCClientSettings = {
+  i18n: {},
+  quotesSymbol: "'",
+}
+
+export function settings(settings: Partial<EasyRPCClientSettings>) {
+  Object.assign(Settings, settings);
+}

@@ -1,5 +1,5 @@
-import { InvalidFieldReason, ValidationErrorResponse } from "./client";
-import z, { ZodObject } from "zod";
+import { InvalidFieldReason, JSONErrorResponse } from "./client";
+import z, { ZodError, ZodObject } from "zod";
 
 export type APIRequest = {
   method: string,
@@ -8,7 +8,7 @@ export type APIRequest = {
 
 export type APIValidationObject = Record<string, ZodObject<any>>
 
-export type InvalidResult = [ValidationErrorResponse, {
+export type InvalidResult = [JSONErrorResponse, {
   status: number
 }];
 
@@ -25,6 +25,8 @@ function invalidResponse(message: string, args: string[] = []): InvalidResult {
     {
       message,
       args,
+      statusCode: 400,
+      preferredErrorDisplay: "form",
       invalidFields: {}
     }, {
       status: 400
@@ -32,45 +34,58 @@ function invalidResponse(message: string, args: string[] = []): InvalidResult {
   ]
 }
 
-function stringifyUnion(union: readonly any[]): string {
-  return "(" + union.map(e => `'${e}'`).join(" | ") + ")";
-}
-
 export function typeExpectedMessage(expectedType: string, got: any) {
   return `expected to be '${expectedType}' got ${typeof got}: '${got}'`;
 }
 
-function typeExpectedReason(expectedType: string, got: any): InvalidFieldReason {
-  return {
-    message: `expected to be {...} got {...}: {...}`,
-    args: [expectedType, typeof got, got + ""],
-  }
-}
 
+type ZodSolver = (err: ZodError) => JSONErrorResponse;
 
+const defaultZodSolver: ZodSolver = (err) => {
+  const invalidFields: Record<string, InvalidFieldReason> = {};
 
-const UserMessages = {
-  required: "required field",
-  invalid: "field is invalid",
-  invalidRequest: "request is invalid",
-};
-
-function makeReason(reason: string | InvalidFieldReason): InvalidFieldReason {
-  if (typeof reason == "string") {
-    return {
-      message: reason,
+  let firstError: InvalidFieldReason = { message: "", args: [] };
+  let firstErrorFieldName: string = "";
+  for (const issue of err.issues) {
+    const err: InvalidFieldReason = {
+      message: issue.message,
       args: []
     }
+    const path: string = issue.path.join(".");
+
+    if (!firstErrorFieldName) {
+      firstError = err;
+      firstErrorFieldName = path;
+    }
+    invalidFields[path] = err;
   }
-  return reason;
+
+
+  const invalidRes: JSONErrorResponse = {
+    message: ResponseError.getManyFieldsErrorMessage(invalidFields),
+    statusCode: 400,
+    preferredErrorDisplay: "field",
+    args: firstError.args,
+    invalidFields,
+  };
+
+  return invalidRes;
 }
 
-function arraify<T>(value: T | T[]): T[] {
-  if (value instanceof Array) {
-    return value;
-  }
-  return [value];
+
+type EasyRPCServerSettings = {
+  zodSolver: ZodSolver;
 }
+
+const Settings: EasyRPCServerSettings = {
+  zodSolver: defaultZodSolver
+}
+
+
+export function settings(settings: Partial<EasyRPCServerSettings>) {
+  Object.assign(Settings, settings);
+}
+
 
 function validate(req: APIRequest, rules: APIValidationObject): Promise<InvalidResult | false>;
 
@@ -83,27 +98,14 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
     return invalidResponse(`API method '${method}' doesn't exist`);
   }
 
-  const invalidFields: Record<string, InvalidFieldReason> = {};
-
   let argsParsed;
   try {
     argsParsed = zodRule.parse(args);
   } catch (zErr: any) {
-    if (zErr.issues) {
-      for (const issue of zErr.issues) {
-        invalidFields[issue.path.join(".")] = {
-          message: issue.message,
-          args: []
-        }
-      }
-      const invalidRes: ValidationErrorResponse = {
-        message: "Bad request",
-        args: [],
-        invalidFields,
-      };
-
+    if (zErr.issues && zErr.issues.length) {
+      const invalidRes = Settings.zodSolver(zErr);
       return [invalidRes, {
-        status: 400
+        status: invalidRes.statusCode,
       }];
     }
     throw zErr;
@@ -118,12 +120,8 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
   try {
     result = await api[method](argsParsed);
   } catch (err: any) {
-    if (err instanceof ResponseError) {
-      return [{
-        message: err.message,
-        args: [],
-        ...err.response,
-      }, {
+    if (err.statusCode && err.message && err.response && err.response.preferredErrorDisplay) {
+      return [err.response, {
         status: err.statusCode
       }];
     }
@@ -156,25 +154,67 @@ export function NextPOST(NextResponse: INextResponse, rules: APIValidationObject
   }
 }
 
-type PlainObject = Record<string, any>
 export class ResponseError extends Error {
-  public readonly statusCode;
-  public readonly response;
-  constructor(message: string, statusCode?: number, response?: PlainObject)
-  constructor(response: PlainObject, statusCode?: number)
-  constructor(arg1: string | PlainObject, arg2?: any, arg3?: any) {
-    let message = "Bad request";
-    let payload: PlainObject;
-    let statusCode = arg2 || 400;;
-    if (typeof arg1 == "string") {
-      message = arg1;
-      payload = arg3 || {};
+  public readonly statusCode: number;
+  public readonly response: JSONErrorResponse;
+
+  static getMainErrorMessageForField(fieldName: string, fieldMessage: string) {
+    return `Field ${fieldName} has an error: ${fieldMessage}`;
+  }
+
+  static getManyFieldsErrorMessage(invalidFields: Record<string, InvalidFieldReason>) {
+    return `Following fields contains errors: ${Object.keys(invalidFields).join(", ")}`;
+  }
+
+  constructor(message: string, args?: string[])
+  constructor(field: string, message: string, args?: string[])
+  constructor(response: Partial<JSONErrorResponse>)
+  constructor(arg1: string | Partial<JSONErrorResponse>, arg2?: string | string[], arg3?: string[]) {
+    let message: string;
+    let response: Partial<JSONErrorResponse>;
+    let statusCode: number;
+    let args: string[];
+    if (typeof arg1 != "string") {
+      response = arg1;
+      if (!response.message && response.invalidFields) {
+        response.message = ResponseError.getManyFieldsErrorMessage(response.invalidFields);
+      }
+    } else if (typeof arg2 == "string") {
+      args = arg3 || [];
+      // message = ResponseError.getManyFieldsErrorMessage(arg1, arg2);
+      const invalidFields = {
+        [arg1]: {
+          message: arg2,
+          args,
+        }
+      };
+
+      response = {
+        message: ResponseError.getManyFieldsErrorMessage(invalidFields),
+        args,
+        preferredErrorDisplay: "field",
+        invalidFields,
+      };
     } else {
-      payload = arg1;
+      response = {
+        message: arg1,
+        args: arg2 || [],
+      }
     }
+
+    message = response.message || "Bad request";
+    statusCode = response.statusCode || 400;
 
     super(message);
     this.statusCode = statusCode;
-    this.response = payload;
+    this.response = {
+      message,
+      args: [],
+      statusCode,
+      invalidFields: {},
+      preferredErrorDisplay: "both",
+      ...response,
+    };
+
   }
 }
