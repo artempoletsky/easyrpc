@@ -30,7 +30,7 @@ First create a new directory for a new Next API route. Create 2 files inside it:
 
 `schemas.ts ` contains validation rules for your API methods. 
 
-It's mandatory to create it for `zod`. This way you can use same validation rules on both the client and the server.
+It's recommended to create it if you want to use `zod` for validation on the client. This way you can use same validation rules on both the client and the server.
 ```typescript
 // schemas.ts
 
@@ -50,21 +50,25 @@ export type AMyMethod = z.infer<typeof myMethod>;
 // ... export other methods this way
 ```
 
-
+Next.js route:
 ```typescript
 // route.ts
 
 import { NextResponse } from "next/server";
 import validate, { NextPOST, ResponseError } from "@artempoletsky/easyrpc";
 import * as schemas from "./schemas";
-
+import type { AMyMethod } from "./schemas";
 
 //implement your method 
 async function myMethod({ num, str, array, etc }: AMyMethod){
   // zod will ensure that all args are valid here
 
-  if (false) throw new ResponseError("Bad request"); // send 400 error on the client
-  if (false) throw new ResponseError("fieldName", "Bad field"); // send 400 error on the client and tell that a specific form field caused it
+  // send 400 error to the client
+  if (false) throw new ResponseError("Bad request");
+
+  // send 400 error to the client and tell that a specific form field caused it
+  if (false) throw new ResponseError("fieldName", "Bad field");
+
   if (false) throw new Error("Something got wrong"); // 500 error
 
   return "Hello RPC!"; // send this as a responce to the client
@@ -97,9 +101,7 @@ export async function POST(req: NextRequest) {
       method, // "myMethod"
       args, // args is TMyMethod if valid
     },
-    {
-      myMethod: VMyMethod, // pass here all of your rules for all of your methods
-    },
+    schemas,
     {
       myMethod, // pass here all of your methods 
     }
@@ -220,6 +222,3 @@ export default function Page() {
 }
 ```
 
-import { AAuthorize, authorize as ZAuthorize } from "../api/schemas";
-
-const authorize = getAPIMethod<FAuthorize>(API_ENDPOINT, "authorize");
