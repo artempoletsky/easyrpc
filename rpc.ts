@@ -199,6 +199,7 @@ export class ResponseError extends Error {
       response = {
         message: arg1,
         args: arg2 || [],
+        preferredErrorDisplay: "form",
       }
     }
 

@@ -5,7 +5,7 @@ function getResponseErrorPromise(res: Response): Promise<JSONErrorResponse> {
   return new Promise((resolve, reject) => {
     res.json().then(resolve as any).catch(e => {
       resolve({
-        message: "Unknown error occured (...)",
+        message: "Unknown error occured {...}",
         args: [res.status + ""],
         preferredErrorDisplay: "form",
         invalidFields: {},
@@ -15,7 +15,8 @@ function getResponseErrorPromise(res: Response): Promise<JSONErrorResponse> {
   });
 }
 
-export function getAPIMethod<MethodType extends (args: any) => Promise<any> = () => Promise<any>>
+type APIMethod = (args: any) => Promise<any>;
+export function getAPIMethod<MethodType extends APIMethod = () => Promise<any>>
   (route: string, method: string, options?: Record<string, any>): MethodType {
   if (!options)
     options = {};
@@ -69,22 +70,9 @@ export function formatErrorMessage(reason: InvalidFieldReason): string {
   return result.join(Settings.quotesSymbol);
 }
 
-
-export function useMantineRequestError(form: MantineForm) {
-  function setRequestError(): void
-  function setRequestError(err: JSONErrorResponse): void
-  function setRequestError(err?: JSONErrorResponse) {
-    if (!err || err.preferredErrorDisplay == "form") {
-      form.clearErrors();
-    } else {
-      const result: any = {};
-      for (const key in err.invalidFields) {
-        result[key] = formatErrorMessage(err.invalidFields[key]);
-      }
-      form.setErrors(result);
-    }
-  }
-  return setRequestError;
+type RequestErrorSetter = {
+  (): void;
+  (err: JSONErrorResponse): void
 }
 
 export type InvalidFieldReason = {
@@ -112,3 +100,36 @@ const Settings: EasyRPCClientSettings = {
 export function settings(settings: Partial<EasyRPCClientSettings>) {
   Object.assign(Settings, settings);
 }
+
+
+let react: any;
+try {
+  react = require("react");
+  console.log("react detected");
+} catch (err) {
+  console.log("no react detected");
+}
+
+type UseErrorResponseReturn = [RequestErrorSetter, string, JSONErrorResponse | undefined];
+export function useErrorResponse(form?: MantineForm): UseErrorResponseReturn {
+  if (!react) throw new Error("react is undefined");
+  const [state, setter]: [JSONErrorResponse | undefined, RequestErrorSetter] = react.useState(undefined);
+  const message = mainErrorMessage(state);
+
+  react.useEffect(() => {
+    if (form) {
+      if (!state || state.preferredErrorDisplay == "form") {
+        form.clearErrors();
+      } else {
+        const result: any = {};
+        for (const key in state.invalidFields) {
+          result[key] = formatErrorMessage(state.invalidFields[key]);
+        }
+        form.setErrors(result);
+      }
+    }
+  }, [state]);
+
+  return [setter, message, state];
+}
+

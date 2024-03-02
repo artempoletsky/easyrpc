@@ -9,6 +9,7 @@
     "test": "jest"
   },
   "keywords": [
+    "zod",
     "API",
     "validation",
     "RPC",
@@ -38,6 +39,7 @@
     "/build/rpc.*"
   ],
   "dependencies": {
+    "react": "^18.2.0",
     "zod": "^3.22.4"
   }
 }
