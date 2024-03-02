@@ -104,10 +104,8 @@ export function settings(settings: Partial<EasyRPCClientSettings>) {
 
 let react: any;
 try {
-  react = require("react");
-  console.log("react detected");
+  react = require("react");  
 } catch (err) {
-  console.log("no react detected");
 }
 
 type UseErrorResponseReturn = [RequestErrorSetter, string, JSONErrorResponse | undefined];
