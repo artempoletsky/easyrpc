@@ -169,14 +169,14 @@ When throwng `ResponseError` you can customize the error code, error fields and 
 ```
 
 
-Using with [@manine/form](https://mantine.dev/form/use-form/)
+Using with [@mantine/form](https://mantine.dev/form/use-form/)
 
 
 ```tsx
 
 
 import { getAPIMethod } from "@artempoletsky/easyrpc/client";
-import { useForm } from '@mantine/form';
+import { useForm } from "@mantine/form";
 
 import type { FAuthorize } from "../path/to/your/api/route";
 
