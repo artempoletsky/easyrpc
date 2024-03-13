@@ -39,7 +39,7 @@ export function typeExpectedMessage(expectedType: string, got: any) {
 }
 
 
-type ZodSolver = (err: ZodError) => JSONErrorResponse;
+export type ZodSolver = (err: ZodError) => JSONErrorResponse;
 
 const defaultZodSolver: ZodSolver = (err) => {
   const invalidFields: Record<string, InvalidFieldReason> = {};
@@ -73,7 +73,7 @@ const defaultZodSolver: ZodSolver = (err) => {
 }
 
 
-type EasyRPCServerSettings = {
+export type EasyRPCServerSettings = {
   zodSolver: ZodSolver;
 }
 
