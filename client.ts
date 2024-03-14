@@ -216,12 +216,16 @@ export function useVars<Type extends Record<string, string>>(arg: Type | UseVars
   return [result, helper];
 }
 
+export type BeforeCallback<AType> =
+  ((...args: any[]) => Promise<AType | undefined>) |
+  ((...args: any[]) => AType | undefined)
+
 
 
 export type FetchCatchOptions<ReturnType, AType> = {
-  then?: (arg: ReturnType) => void;
+  then?: (result: ReturnType, args: AType) => void;
   errorCatcher?: (arg?: JSONErrorResponse) => void;
-  before?: (arg: any) => AType | undefined;
+  before?: BeforeCallback<AType>;
   method: (arg: AType) => Promise<ReturnType>;
   buttonRender?: ElementType;
 }
@@ -257,23 +261,37 @@ export class FetcherCatcher<ReturnType, AType>{
     return () => (this.options.method(arg));
   }
 
-  action(args?: any) {
+  action(...args: any[]) {
     return () => {
       const { errorCatcher, then, before, method } = this.options;
       if (errorCatcher) {
         errorCatcher();
       }
 
-      const methodArgs: AType = before ? before(args) : {} as any;
-      if (!methodArgs) return;
+      const beforePromise = new Promise<AType | undefined>((resolve) => {
+        if (!before) {
+          resolve({} as AType);
+          return;
+        }
 
-      // console.log(options);
+        const p = before(...args);
+        if (p instanceof Promise) {
+          p.then(resolve);
+          return;
+        }
+        resolve(p);
+      });
 
-      let p: Promise<any> = method(methodArgs)
-      if (then)
-        p = p.then(then);
-      if (errorCatcher)
-        p.catch(errorCatcher);
+      beforePromise.then(methodArgs => {
+        if (!methodArgs) return;
+        let p: Promise<any> = method(methodArgs)
+          .then(result => {
+            if (then)
+              then(result, methodArgs);
+          });
+        if (errorCatcher)
+          p.catch(errorCatcher);
+      });
     }
   }
 
@@ -284,7 +302,7 @@ export class FetcherCatcher<ReturnType, AType>{
     });
   }
 
-  then(arg: (arg: ReturnType) => void) {
+  then(arg: (result: ReturnType, args: AType) => void) {
     this.options.then
     return this.factory({
       ...this.options,
@@ -292,7 +310,7 @@ export class FetcherCatcher<ReturnType, AType>{
     });
   }
 
-  before(arg: (arg?: any) => AType) {
+  before(arg: BeforeCallback<AType>) {
     return this.factory({
       ...this.options,
       before: arg,
