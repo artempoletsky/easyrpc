@@ -228,6 +228,7 @@ export type FetchCatchOptions<ReturnType, AType> = {
   before?: BeforeCallback<AType>;
   method?: (arg: AType) => Promise<ReturnType>;
   buttonRender?: ElementType;
+  confirm?: (...args: any[]) => Promise<boolean>;
 }
 
 export type FetchCatchFetcher<ReturnType, AType> = {
@@ -267,39 +268,55 @@ export class FetcherCatcher<ReturnType, AType>{
 
   action(...args: any[]) {
     return () => {
-      const { errorCatcher, then, before, method } = this.options;
+      const { errorCatcher, then, before, method, confirm } = this.options;
 
-      if (!method) throw new Error("Specify method first!");
-
-      if (errorCatcher) {
-        errorCatcher();
-      }
-
-      const beforePromise = new Promise<AType | undefined>((resolve) => {
-        if (!before) {
-          resolve({} as AType);
-          return;
-        }
-
-        const p = before(...args);
-        if (p instanceof Promise) {
-          p.then(resolve);
-          return;
-        }
-        resolve(p);
+      const confirmPromise = new Promise<boolean>((resolve) => {
+        if (!confirm) resolve(true);
+        else confirm(...args).then(resolve);
       });
 
-      beforePromise.then(methodArgs => {
-        if (!methodArgs) return;
-        let p: Promise<any> = method(methodArgs)
-          .then(result => {
-            if (then)
-              then(result, methodArgs);
-          });
-        if (errorCatcher)
-          p.catch(errorCatcher);
+      confirmPromise.then(confirmed => {
+        if (!confirmed) return;
+
+        if (!method) throw new Error("Specify method first!");
+
+        if (errorCatcher) {
+          errorCatcher();
+        }
+
+        const beforePromise = new Promise<AType | undefined>((resolve) => {
+          if (!before) {
+            resolve({} as AType);
+            return;
+          }
+
+          const p = before(...args);
+          if (p instanceof Promise) {
+            p.then(resolve);
+            return;
+          }
+          resolve(p);
+        });
+
+        beforePromise.then(methodArgs => {
+          if (!methodArgs) return;
+          let p: Promise<any> = method(methodArgs)
+            .then(result => {
+              if (then)
+                then(result, methodArgs);
+            });
+          if (errorCatcher)
+            p.catch(errorCatcher);
+        });
       });
     }
+  }
+
+  confirm(fn: (...args: any[]) => Promise<boolean>) {
+    return this.factory({
+      ...this.options,
+      confirm: fn,
+    });
   }
 
   method<NewReturnType, NewAType>(method: (args: NewAType) => Promise<NewReturnType>): FetcherCatcher<NewReturnType, NewAType> {
