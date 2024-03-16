@@ -226,7 +226,7 @@ export type FetchCatchOptions<ReturnType, AType> = {
   then?: (result: ReturnType, args: AType) => void;
   errorCatcher?: (arg?: JSONErrorResponse) => void;
   before?: BeforeCallback<AType>;
-  method: (arg: AType) => Promise<ReturnType>;
+  method?: (arg: AType) => Promise<ReturnType>;
   buttonRender?: ElementType;
 }
 
@@ -237,6 +237,7 @@ export type FetchCatchFetcher<ReturnType, AType> = {
 
 
 export type FetchCatchFactory = {
+  <ReturnType, AType>(): FetcherCatcher<ReturnType, AType>;
   <ReturnType>(method: () => Promise<ReturnType>): FetcherCatcher<ReturnType, void>;
   <ReturnType, AType>(method: (arg: AType) => Promise<ReturnType>): FetcherCatcher<ReturnType, AType>;
   <ReturnType, AType>(options: FetchCatchOptions<ReturnType, AType>): FetcherCatcher<ReturnType, AType>;
@@ -255,15 +256,21 @@ export class FetcherCatcher<ReturnType, AType>{
   fetcher(arg: AType): () => Promise<ReturnType>
   fetcher(arg: () => AType): () => Promise<ReturnType>
   fetcher(arg?: any): () => Promise<ReturnType> {
+    const { method } = this.options;
+    if (!method) throw new Error("Specify method first!");
+
     if (typeof arg == "function") {
-      return () => (this.options.method(arg()))
+      return () => (method(arg()))
     }
-    return () => (this.options.method(arg));
+    return () => (method(arg));
   }
 
   action(...args: any[]) {
     return () => {
       const { errorCatcher, then, before, method } = this.options;
+
+      if (!method) throw new Error("Specify method first!");
+
       if (errorCatcher) {
         errorCatcher();
       }
@@ -293,6 +300,13 @@ export class FetcherCatcher<ReturnType, AType>{
           p.catch(errorCatcher);
       });
     }
+  }
+
+  method<NewReturnType, NewAType>(method: (args: NewAType) => Promise<NewReturnType>): FetcherCatcher<NewReturnType, NewAType> {
+    return <any>this.factory({
+      ...this.options,
+      method: method as any,
+    });
   }
 
   catch(arg: (arg?: JSONErrorResponse) => void) {
@@ -342,6 +356,6 @@ export class FetcherCatcher<ReturnType, AType>{
 }
 
 
-export const fetchCatch: FetchCatchFactory = <ReturnType, AType>(arg: any) => {
+export const fetchCatch: FetchCatchFactory = <ReturnType, AType>(arg?: any) => {
   return new FetcherCatcher<ReturnType, AType>(fetchCatch, FetcherCatcher.options(arg));
 }
