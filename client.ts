@@ -15,7 +15,7 @@ function getResponseErrorPromise(res: Response): Promise<JSONErrorResponse> {
   });
 }
 
-type APIMethod = (args: any) => Promise<any>;
+type APIMethod = (...args: any[]) => Promise<any>;
 export function getAPIMethod<MethodType extends APIMethod = () => Promise<any>>
   (route: string, method: string, options?: Record<string, any>): MethodType {
   if (!options)

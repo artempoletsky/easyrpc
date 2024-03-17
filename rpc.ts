@@ -120,9 +120,11 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
   try {
     result = await api[method](argsParsed);
   } catch (err: any) {
-    if (err.statusCode && err.message && err.response && err.response.preferredErrorDisplay) {
-      return [err.response, {
-        status: err.statusCode
+    const e: JSONErrorResponse | ResponseError | Error = err;
+    if ("statusCode" in e) {
+      const response = "response" in e ? e.response : e;
+      return [response, {
+        status: e.statusCode
       }];
     }
     throw err;
@@ -169,13 +171,36 @@ export class ResponseError extends Error {
   constructor(message: string, args?: string[])
   constructor(field: string, message: string, args?: string[])
   constructor(response: Partial<JSONErrorResponse>)
-  constructor(arg1: string | Partial<JSONErrorResponse>, arg2?: string | string[], arg3?: string[]) {
+  constructor(error: ZodError)
+  constructor(error: ResponseError)
+  constructor(error: Error)
+  constructor(arg1: string | Partial<JSONErrorResponse> | Error | ZodError | ResponseError, arg2?: string | string[], arg3?: string[]) {
     let message: string;
     let response: Partial<JSONErrorResponse>;
     let statusCode: number;
     let args: string[];
     if (typeof arg1 != "string") {
-      response = arg1;
+      if ("response" in arg1) {
+        response = arg1.response;
+      } else if ("issues" in arg1) {
+        const invalidFields: Record<string, InvalidFieldReason> = {};
+        for (const isssue of arg1.issues) {
+          invalidFields[isssue.path.join(".")] = {
+            message: isssue.message,
+            args: [],
+          }
+        }
+        response = {
+          message: arg1.message,
+          invalidFields,
+        }
+      } else if ("stack" in arg1) {
+        response = {
+          message: arg1.message,
+        }
+      } else {
+        response = arg1
+      }
       if (!response.message && response.invalidFields) {
         response.message = ResponseError.getManyFieldsErrorMessage(response.invalidFields);
       }
