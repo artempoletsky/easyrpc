@@ -64,7 +64,7 @@ const defaultZodSolver: ZodSolver = (err) => {
   const invalidRes: JSONErrorResponse = {
     message: ResponseError.getManyFieldsErrorMessage(invalidFields),
     statusCode: 400,
-    preferredErrorDisplay: "field",
+    preferredErrorDisplay: "both",
     args: firstError.args,
     invalidFields,
   };
