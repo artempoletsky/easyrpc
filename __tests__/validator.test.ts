@@ -10,18 +10,18 @@ const xtest = (...args: any) => { };
 
 describe("Validator", () => {
 
-  const addTodoRules: APIValidationObject = {
+  const addTodoRules = {
     addTodo: z.object({
       name: z.string()
     })
-  };
+  } as const;
 
   const correctaddTodoRequest = {
     method: "addTodo",
     args: {
       name: "nothing"
     }
-  };
+  } as const;
 
   test("validates required methods", async () => {
 
@@ -37,11 +37,11 @@ describe("Validator", () => {
     const incorrectRequest = {
       method: "bar",
       args: {}
-    };
+    } as const;
 
-    [res, status] = await validate(incorrectRequest, addTodoRules, api);
+    [res, status] = await validate(incorrectRequest as any, addTodoRules, api);
     expect(status.status).toBeLessThan(500);
-    expect(status.status).toBeGreaterThanOrEqual(400);
+    expect(status.status).toBe(405);
     expect(res.message).toBe(`API method 'bar' doesn't exist`);
   });
 
@@ -53,9 +53,9 @@ describe("Validator", () => {
     const incorrectRequest = {
       method: "addTodo",
       args: {}
-    };
+    } as const;
 
-    const [res, status]: [JSONErrorResponse, any] = await validate(incorrectRequest, addTodoRules, api);
+    const [res, status]: [JSONErrorResponse, any] = await validate(incorrectRequest as any, addTodoRules, api);
     expect(api.addTodo).not.toHaveBeenCalled();
     expect(status.status).toBeLessThan(500);
     expect(status.status).toBeGreaterThanOrEqual(400);
@@ -64,7 +64,7 @@ describe("Validator", () => {
     expect(res.invalidFields.name).toBeDefined();
     expect(res.invalidFields.name.message).toBe(`Required`);
 
-    expect(res.preferredErrorDisplay).toBe("field");
+    expect(res.preferredErrorDisplay).toBe("both");
   });
 
 
@@ -78,7 +78,7 @@ describe("Validator", () => {
       args: {}
     };
 
-    const invalidRes = await validate(incorrectRequest, addTodoRules);
+    const invalidRes = await validate(incorrectRequest as any, addTodoRules);
     expect(invalidRes).not.toBe(false)
     if (!invalidRes) {
       return;
@@ -95,7 +95,7 @@ describe("Validator", () => {
         name: null
       }
     };
-    const invalidRes = await validate(incorrectRequest, addTodoRules);
+    const invalidRes = await validate(incorrectRequest as any, addTodoRules);
     expect(invalidRes).not.toBe(false);
     if (!invalidRes) return;
 
@@ -329,8 +329,9 @@ describe("Validator", () => {
 
 
   test("Errors throws", async () => {
-    const request: APIRequest = { method: "test", args: {} };
-    const rules: APIValidationObject = { test: z.object({}) };
+    const rules = { test: z.object({}) };
+    const request: APIRequest<typeof rules> = { method: "test", args: {} };
+
     const fn1 = async () => {
       throw new ResponseError("Test throw");
     }

@@ -1,6 +1,6 @@
 {
   "name": "@artempoletsky/easyrpc",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "API library",
   "types": "build/rpc.d.ts",
   "main": "build/rpc.js",
@@ -31,11 +31,14 @@
     "typescript": "^5.3.3"
   },
   "exports": {
+    "./react": "./build/react.js",
     "./client": "./build/client.js",
     ".": "./build/rpc.js"
   },
   "files": [
+    "package.json",
     "/build/client.*",
+    "/build/react.*",
     "/build/rpc.*"
   ],
   "dependencies": {

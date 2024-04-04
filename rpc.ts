@@ -1,12 +1,12 @@
 import { InvalidFieldReason, JSONErrorResponse } from "./client";
-import z, { ZodError, ZodObject } from "zod";
+import z, { ZodEffects, ZodError, ZodObject } from "zod";
 
-export type APIRequest = {
-  method: string,
-  args: any
+export type APIRequest<T extends APIValidationObject = {}, K extends keyof T = keyof T> = {
+  method: K;
+  args: z.infer<T[K]>;
 }
 
-export type APIValidationObject = Record<string, ZodObject<any>>
+export type APIValidationObject = Record<string, ZodObject<any> | ZodEffects<ZodObject<any>>>
 
 export type InvalidResult = [JSONErrorResponse, {
   status: number
@@ -17,8 +17,9 @@ export type ValidResult = [any, {
 }];
 
 
-export type APIObject = Record<string, (args: any) => Promise<any>>;
-
+export type APIObject<T extends APIValidationObject, K extends keyof T = keyof T> = {
+  [P in K]: (args: z.infer<T[P]>) => Promise<any>
+};
 
 function invalidResponse(message: string, args: string[] = []): InvalidResult {
   return [
@@ -87,15 +88,18 @@ export function settings(settings: Partial<EasyRPCServerSettings>) {
 }
 
 
-function validate(req: APIRequest, rules: APIValidationObject): Promise<InvalidResult | false>;
+function validate<T extends APIValidationObject, K extends keyof T = keyof T>(req: APIRequest<T, K>, rules: T): Promise<InvalidResult | false>;
 
-function validate(req: APIRequest, rules: APIValidationObject, api: APIObject): Promise<ValidResult | InvalidResult>
+function validate<T extends APIValidationObject, K extends keyof T = keyof T>(req: APIRequest<T, K>, rules: T, api: APIObject<T, K>): Promise<ValidResult | InvalidResult>
 
-async function validate(req: APIRequest, rules: APIValidationObject, api?: APIObject) {
+async function validate<T extends APIValidationObject, K extends keyof T & string = keyof T & string>(req: APIRequest<T, K>, rules: T, api?: APIObject<T, K>) {
   const { method, args } = req;
   const zodRule = rules[method];
   if (!zodRule) {
-    return invalidResponse(`API method '${method}' doesn't exist`);
+    const err = ResponseError.methodNotAllowed(`API method '${method}' doesn't exist`);
+    return [err.response, {
+      status: err.statusCode,
+    }];
   }
 
   let argsParsed;
@@ -118,7 +122,7 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
 
   let result: any;
   try {
-    result = await api[method](argsParsed);
+    result = await (api as any)[method](argsParsed);
   } catch (err: any) {
     const e: JSONErrorResponse | ResponseError | Error = err;
     if ("statusCode" in e) {
@@ -145,20 +149,34 @@ async function validate(req: APIRequest, rules: APIValidationObject, api?: APIOb
 
 export default validate;
 
-type INextResponse = {
-  json: (result: any, statusObj: { status: number }) => any
-}
-
-export function NextPOST(NextResponse: INextResponse, rules: APIValidationObject, api: APIObject) {
-  return async function (req: any) {
-    let [a, b] = await validate(await req.json(), rules, api);
-    return NextResponse.json(a, b);
-  }
-}
 
 export class ResponseError extends Error {
   public readonly statusCode: number;
   public readonly response: JSONErrorResponse;
+
+  static createWithStatus(statusCode: number, message: string, args?: string[]) {
+    return new ResponseError({
+      message,
+      statusCode,
+      args,
+    });
+  }
+
+  static unauthorized(message?: string, args?: string[]) {
+    return this.createWithStatus(401, message ?? "Unauthorized", args);
+  }
+
+  static forbidden(message?: string, args?: string[]) {
+    return this.createWithStatus(403, message ?? "Forbidden", args);
+  }
+
+  static notFound(message?: string, args?: string[]) {
+    return this.createWithStatus(404, message ?? "Not Found", args);
+  }
+
+  static methodNotAllowed(message?: string, args?: string[]) {
+    return this.createWithStatus(405, message ?? "Method Not Allowed", args);
+  }
 
   static getMainErrorMessageForField(fieldName: string, fieldMessage: string) {
     return `Field ${fieldName} has an error: ${fieldMessage}`;
@@ -242,5 +260,101 @@ export class ResponseError extends Error {
       ...response,
     };
 
+  }
+}
+
+
+
+type INextResponse = {
+  json: (result: any, statusObj: { status: number }) => any
+}
+
+
+let NextResponse: INextResponse;
+try {
+  NextResponse = require("next/server").NextResponse;
+} catch (error) {
+
+}
+
+
+export function NextPOST<T extends APIValidationObject, K extends keyof T = keyof T>(rules: T, api: APIObject<T, K>) {
+  if (!NextResponse) throw new Error("Failed to require NextResponse");
+
+  return async function (req: any) {
+    let [a, b] = await validate(await req.json(), rules, api);
+    return NextResponse.json(a, b);
+  }
+}
+
+
+import type http from "http";
+import pkg from "./package.json";
+export type AHttpListener<T extends APIValidationObject, K extends keyof T> = {
+  httpGetFallback?: string;
+  rules: T;
+  api: APIObject<T, K>;
+};
+export function httpListener<T extends APIValidationObject, K extends keyof T = keyof T>({ httpGetFallback, api, rules }: AHttpListener<T, K>) {
+  return function (req: http.IncomingMessage, res: http.ServerResponse<http.IncomingMessage> & { req: http.IncomingMessage }) {
+    if (req.method == "OPTIONS") {
+      res.writeHead(204, {
+        // "Date": (new Date()).toString(),
+        "Server": "Mydb 0.0.1",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Request-Headers": "X-PINGOTHER, Content-Type",
+        "Access-Control-Allow-Headers": "Access-Control-Allow-Headers, Origin, Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers",
+        "Access-Control-Max-Age": "86400",
+        "Vary": "Accept-Encoding, Origin",
+        "Keep-Alive": "timeout=2, max=100",
+        "Connection": "Keep-Alive",
+      });
+      res.end();
+      return;
+    }
+
+
+    let body: any[] = [];
+    let bodystr: string;
+    req
+      .on("data", chunk => {
+        body.push(chunk);
+      })
+      .on("end", async () => {
+        bodystr = Buffer.concat(body).toString();
+
+        const [postResult, status] = await request(bodystr, req.method || "GET");
+        res.statusCode = status;
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.write(JSON.stringify(postResult));
+
+        res.end();
+      });
+  }
+
+  async function request(requestStr: string, httpMethod: string): Promise<[any, number]> {
+    let requestObject: any;
+
+    if (httpMethod == "POST") {
+      try {
+        requestObject = JSON.parse(requestStr);
+      } catch (error) {
+        const err = ResponseError.createWithStatus(400, "Invalid JSON request body");
+        return [err.response, 400];
+      }
+
+      if (!requestObject.args || !requestObject.method) {
+        const err = ResponseError.createWithStatus(400, "method or args are missing");
+        return [err.response, 400];
+      }
+
+      const [response, status] = await validate(requestObject, rules, api);
+      return [response, status.status];
+    } else {
+      return [httpGetFallback ?? `EasyRPC server (${pkg.version})`, 200];
+    }
   }
 }
