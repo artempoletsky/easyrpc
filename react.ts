@@ -1,4 +1,5 @@
-import type { ReactNode, ElementType, ReactElement } from "react";
+import type { ReactNode, ElementType, ReactElement, Component, ComponentType } from "react";
+import type React from "react";
 import { JSONErrorResponse, RequestErrorSetter, formatErrorMessage, mainErrorMessage } from "./client";
 
 type MantineForm = {
@@ -7,17 +8,28 @@ type MantineForm = {
 }
 
 
-let react: any;
+let react: typeof React;
 try {
   react = require("react");
 } catch (err) {
 }
 
 
+type ThenState<ReturnType> = {
+  result: ReturnType;
+  setResult: React.SetStateAction<ReturnType>;
+}
+
+type CatchState = {
+  errorSetter: RequestErrorSetter;
+  errorMessage: string;
+  errorResponse: JSONErrorResponse | undefined;
+}
+
 type UseErrorResponseReturn = [RequestErrorSetter, string, JSONErrorResponse | undefined];
 export function useErrorResponse(form?: MantineForm): UseErrorResponseReturn {
   if (!react) throw new Error("react is undefined");
-  const [state, setter]: [JSONErrorResponse | undefined, RequestErrorSetter] = react.useState(undefined);
+  const [state, setter] = react.useState<JSONErrorResponse | undefined>(undefined);
   const message = mainErrorMessage(state);
 
   react.useEffect(() => {
@@ -34,7 +46,7 @@ export function useErrorResponse(form?: MantineForm): UseErrorResponseReturn {
     }
   }, [state]);
 
-  return [setter, message, state];
+  return [setter as RequestErrorSetter, message, state];
 }
 
 
@@ -53,7 +65,7 @@ export type UseVarsHelper<Type> = {
 }
 
 export type UseVarsOptions<Type> = {
-  Comp?: ElementType;
+  Comp?: ReactComponent;
   labels?: Type;
   placeholders: Type;
   initialValues?: Type;
@@ -130,13 +142,14 @@ export type BeforeCallback<AType> =
   ((...args: any[]) => AType | undefined)
 
 
+type ReactComponent = React.ElementType | React.ComponentType | ((args: any) => React.ReactNode | JSX.Element);
 
 export type FetchCatchOptions<ReturnType, AType> = {
   then?: (result: ReturnType, args: AType) => void;
   errorCatcher?: (arg?: JSONErrorResponse) => void;
   before?: BeforeCallback<AType>;
   method?: (arg: AType) => Promise<ReturnType>;
-  buttonRender?: ElementType;
+  buttonRender?: ReactComponent;
   confirm?: (...args: any[]) => Promise<boolean>;
 }
 
@@ -257,7 +270,7 @@ export class FetcherCatcher<ReturnType, AType>{
     });
   }
 
-  buttonElement(arg: ElementType) {
+  buttonElement(arg: ReactComponent) {
     return this.factory({
       ...this.options,
       buttonRender: arg,
@@ -272,6 +285,41 @@ export class FetcherCatcher<ReturnType, AType>{
     return react.createElement("button", { onClick: this.action() }, name);
   }
 
+  handle(...args: any[]) {
+    this.action(...args)();
+  }
+
+  useCatch(): CatchState {
+    const [errorSetter, errorMessage, errorResponse] = useErrorResponse();
+    this.catch(errorSetter);
+    return {
+      errorSetter,
+      errorMessage,
+      errorResponse,
+    }
+  }
+
+  useThen(): ThenState<ReturnType | undefined>
+  useThen(initial: ReturnType): ThenState<ReturnType>
+  useThen(initial?: ReturnType) {
+    const [result, setResult] = react.useState(initial as any);
+    this.then(setResult);
+    return {
+      result,
+      setResult,
+    } as any;
+  }
+
+  useThenCatch(): ThenState<ReturnType | undefined> & CatchState
+  useThenCatch(initial: ReturnType): ThenState<ReturnType> & CatchState
+  useThenCatch(initial?: ReturnType) {
+    return {
+      ...this.useCatch(),
+      ...this.useThen(initial as any),
+    } as any;
+  }
+
+
   static options<ReturnType, AType>(arg: any): FetchCatchOptions<ReturnType, AType> {
     if (typeof arg !== "function")
       return arg;
@@ -280,7 +328,6 @@ export class FetcherCatcher<ReturnType, AType>{
     };
   }
 }
-
 
 export const fetchCatch: FetchCatchFactory = <ReturnType, AType>(arg?: any) => {
   return new FetcherCatcher<ReturnType, AType>(fetchCatch, FetcherCatcher.options(arg));

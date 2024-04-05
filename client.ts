@@ -1,3 +1,4 @@
+import { APIObject } from "./rpc";
 
 
 function getResponseErrorPromise(res: Response): Promise<JSONErrorResponse> {
@@ -96,3 +97,36 @@ export function settings(settings: Partial<EasyRPCClientSettings>) {
   Object.assign(Settings, settings);
 }
 
+
+export function RPC<PKG extends Record<string, APIMethod>>(route: string) {
+  return {
+    methods<T extends keyof PKG>(...names: T[]): { [P in T]: PKG[P] } {
+      const result: any = {};
+      for (const n of names) {
+        result[n] = this.method(n);
+      }
+      return result;
+    },
+    method<T extends keyof PKG>(name: T): PKG[T] {
+      return getAPIMethod(route, name as any) as any;
+    },
+    /**
+     * Type hack method. You can pass name of a method 
+     * as a string to a component and the component will know the type of the method too.
+     * @param name - the name of the method
+     * @returns string name
+     */
+    hack<T extends keyof PKG>(name: T): PKG[T] {
+      return name as any;
+    },
+    /**
+     * Type hack method. You can pass name of a method 
+     * as a string to a component and the component will know the type of the method too.
+     * @param name - the name of the method
+     * @returns string route?name
+     */
+    hackRoute<T extends keyof PKG>(name: T): PKG[T] {
+      return (route + "?" + (name as string)) as any;
+    },
+  }
+}
