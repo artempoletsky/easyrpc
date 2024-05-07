@@ -98,7 +98,8 @@ export function settings(settings: Partial<EasyRPCClientSettings>) {
 }
 
 
-export function RPC<PKG extends Record<string, APIMethod>>(route: string) {
+export function RPC<PKG extends Record<string, APIMethod>>(route: string, fetchOptions?: Record<string, any>) {
+
   return {
     methods<T extends keyof PKG>(...names: T[]): { [P in T]: PKG[P] } {
       const result: any = {};
@@ -108,7 +109,7 @@ export function RPC<PKG extends Record<string, APIMethod>>(route: string) {
       return result;
     },
     method<T extends keyof PKG>(name: T): PKG[T] {
-      return getAPIMethod(route, name as any) as any;
+      return getAPIMethod(route, name as any, fetchOptions) as any;
     },
     /**
      * Type hack method. You can pass name of a method 

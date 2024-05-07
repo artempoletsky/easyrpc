@@ -137,20 +137,20 @@ export function useVars<Type extends Record<string, string>>(arg: Type | UseVars
   return [result, helper];
 }
 
-export type BeforeCallback<AType> =
-  ((...args: any[]) => Promise<AType | undefined>) |
-  ((...args: any[]) => AType | undefined)
+export type BeforeCallback<AType, BeforeType = void> =
+  ((arg: BeforeType) => Promise<AType | undefined>) |
+  ((arg: BeforeType) => AType | undefined);
 
 
 type ReactComponent = React.ElementType | React.ComponentType | ((args: any) => React.ReactNode | JSX.Element);
 
-export type FetchCatchOptions<ReturnType, AType> = {
+export type FetchCatchOptions<ReturnType, AType, BeforeType = void> = {
   then?: (result: ReturnType, args: AType) => void;
   errorCatcher?: (arg?: JSONErrorResponse) => void;
-  before?: BeforeCallback<AType>;
+  before?: BeforeCallback<AType, BeforeType>;
   method?: (arg: AType) => Promise<ReturnType>;
-  buttonRender?: ReactComponent;
-  confirm?: (...args: any[]) => Promise<boolean>;
+  buttonComponent?: ReactComponent;
+  confirm?: (arg: BeforeType) => Promise<boolean>;
 }
 
 export type FetchCatchFetcher<ReturnType, AType> = {
@@ -160,21 +160,26 @@ export type FetchCatchFetcher<ReturnType, AType> = {
 
 
 export type FetchCatchFactory = {
-  <ReturnType, AType>(): FetcherCatcher<ReturnType, AType>;
-  <ReturnType>(method: () => Promise<ReturnType>): FetcherCatcher<ReturnType, void>;
-  <ReturnType, AType>(method: (arg: AType) => Promise<ReturnType>): FetcherCatcher<ReturnType, AType>;
-  <ReturnType, AType>(options: FetchCatchOptions<ReturnType, AType>): FetcherCatcher<ReturnType, AType>;
+  (): FetcherCatcher<unknown, unknown, void>;
+  <ReturnType>(method: () => Promise<ReturnType>): FetcherCatcher<ReturnType, void, void>;
+  <ReturnType, AType>(method: (arg: AType) => Promise<ReturnType>): FetcherCatcher<ReturnType, AType, void>;
+  <ReturnType, AType, BeforeType = void>(options: FetchCatchOptions<ReturnType, AType, BeforeType>): FetcherCatcher<ReturnType, AType, BeforeType>;
 }
 
-export class FetcherCatcher<ReturnType, AType>{
+export class FetcherCatcher<ReturnType, AType, BeforeType = void> {
   protected factory: FetchCatchFactory;
-  protected options: FetchCatchOptions<ReturnType, AType>;
+  protected options: FetchCatchOptions<ReturnType, AType, BeforeType>;
 
-  constructor(factory: FetchCatchFactory, options: FetchCatchOptions<ReturnType, AType>) {
+  constructor(factory: FetchCatchFactory, options: FetchCatchOptions<ReturnType, AType, BeforeType>) {
     this.factory = factory;
     this.options = options;
   }
 
+  /**
+   * Creates a fetcher function for the useSWR hook.
+   * @param arg Arguemnts for the API method
+   * @returns callback
+   */
   fetcher(): () => Promise<ReturnType>
   fetcher(arg: AType): () => Promise<ReturnType>
   fetcher(arg: () => AType): () => Promise<ReturnType>
@@ -188,13 +193,18 @@ export class FetcherCatcher<ReturnType, AType>{
     return () => (method(arg));
   }
 
-  action(...args: any[]) {
+  /**
+   * Creates a callback that stars the function chain without arguments.
+   * @param arg Arguemnts for the API method
+   * @returns callback
+   */
+  action(arg: BeforeType) {
     return () => {
       const { errorCatcher, then, before, method, confirm } = this.options;
 
       const confirmPromise = new Promise<boolean>((resolve) => {
         if (!confirm) resolve(true);
-        else confirm(...args).then(resolve);
+        else confirm(arg).then(resolve);
       });
 
       confirmPromise.then(confirmed => {
@@ -208,11 +218,11 @@ export class FetcherCatcher<ReturnType, AType>{
 
         const beforePromise = new Promise<AType | undefined>((resolve) => {
           if (!before) {
-            resolve({} as AType);
+            resolve((arg || {}) as AType);
             return;
           }
 
-          const p = before(...args);
+          const p = before(arg);
           if (p instanceof Promise) {
             p.then(resolve);
             return;
@@ -234,20 +244,35 @@ export class FetcherCatcher<ReturnType, AType>{
     }
   }
 
-  confirm(fn: (...args: any[]) => Promise<boolean>) {
+  /**
+   * Sets the Confirm function to the function chain.
+   * @param fn confirm implementation. If it returns a falsy value the function chain will be aborted.
+   * @returns new FetcherCatcher instance
+   */
+  confirm(fn: (arg: BeforeType) => Promise<boolean>) {
     return this.factory({
       ...this.options,
       confirm: fn,
     });
   }
 
-  method<NewReturnType, NewAType>(method: (args: NewAType) => Promise<NewReturnType>): FetcherCatcher<NewReturnType, NewAType> {
+  /**
+   * Sets the API method in the function chain.
+   * @param method API method
+   * @returns new FetcherCatcher instance
+   */
+  method<NewReturnType, NewAType>(method: (args: NewAType) => Promise<NewReturnType>): FetcherCatcher<NewReturnType, NewAType, BeforeType> {
     return <any>this.factory({
       ...this.options,
       method: method as any,
     });
   }
 
+  /**
+   * Sets the Catcher function for the API requests.
+   * @param fn  callback that runs after failed requests.
+   * @returns new FetcherCatcher instance
+   */
   catch(arg: (arg?: JSONErrorResponse) => void) {
     return this.factory({
       ...this.options,
@@ -255,43 +280,71 @@ export class FetcherCatcher<ReturnType, AType>{
     });
   }
 
-  then(arg: (result: ReturnType, args: AType) => void) {
+  /**
+   * Sets the Then callback in the function chain.
+   * @param fn callback that runs after successful requests.
+   * @returns new FetcherCatcher instance
+   */
+  then(fn: (result: ReturnType, args: AType) => void) {
     this.options.then
     return this.factory({
       ...this.options,
-      then: arg,
+      then: fn,
     });
   }
 
-  before(arg: BeforeCallback<AType>) {
+  /**
+   * Sets the Before callback in the function chain.
+   * @param fn callback that runs before requests. Must return arguments for the API method.
+   * @returns new FetcherCatcher instance
+   */
+  before(fn: BeforeCallback<AType, void>): FetcherCatcher<ReturnType, AType, void>
+  before<NewBeforeType = BeforeType>(fn: BeforeCallback<AType, NewBeforeType>): FetcherCatcher<ReturnType, AType, NewBeforeType>
+  before<NewBeforeType = BeforeType>(fn: BeforeCallback<AType, NewBeforeType>): FetcherCatcher<ReturnType, AType, NewBeforeType> {
     return this.factory({
       ...this.options,
-      before: arg,
-    });
+      before: fn as any,
+    }) as any;
   }
 
-  buttonElement(arg: ReactComponent) {
+  /**
+   * Sets the Button component class for the button method.
+   * @param arg something for the react.createElement(arg). Default is "button".
+   * @returns new FetcherCatcher instance
+   */
+  buttonComponent(arg: ReactComponent) {
     return this.factory({
       ...this.options,
-      buttonRender: arg,
+      buttonComponent: arg,
     });
   }
 
-  button(name: string): ReactElement {
-    const { buttonRender } = this.options;
-    if (buttonRender) {
-      return react.createElement(buttonRender, { onClick: this.action() }, name);
-    }
-    return react.createElement("button", { onClick: this.action() }, name);
+  /**
+   * Creates a button - React element that runs current API method.
+   * @param innerText text on the button.
+   * @param arg arguments for the Before function
+   * @returns react.createElement()
+   */
+  button(innerText: string, arg: BeforeType): ReactElement {
+    return react.createElement(this.options.buttonComponent || "button", { onClick: this.action(arg) }, innerText);
   }
 
-  handle(...args: any[]) {
-    this.action(...args)();
+  /**
+   * Starts the function chain.
+   * @param arg arguments for the Before function
+   */
+  handle(arg: BeforeType) {
+    this.action(arg)();
   }
 
+  /**
+   * Creates a React state for error messages. 
+   * Sets the default errorCatcher.
+   * MODIFIES THE CURRENT FetcherCatcher instance.
+   */
   useCatch(): CatchState {
     const [errorSetter, errorMessage, errorResponse] = useErrorResponse();
-    this.catch(errorSetter);
+    this.options.errorCatcher = errorSetter;
     return {
       errorSetter,
       errorMessage,
@@ -299,28 +352,47 @@ export class FetcherCatcher<ReturnType, AType>{
     }
   }
 
-  useThen(): ThenState<ReturnType | undefined>
-  useThen(initial: ReturnType): ThenState<ReturnType>
-  useThen(initial?: ReturnType) {
+
+  /**
+   * Creates a React state for the method's return value.
+   * Sets the default Then function that just puts ReturnType to the result constant.
+   * MODIFIES THE CURRENT FetcherCatcher instance.
+   * @param initial initial value of the `result` constant. 
+   */
+  useThen<InitialT extends ReturnType | undefined = undefined>(initial?: InitialT): ThenState<
+    InitialT extends undefined ?
+    ReturnType | undefined :
+    ReturnType> {
     const [result, setResult] = react.useState(initial as any);
-    this.then(setResult);
+    this.options.then = setResult;
     return {
       result,
       setResult,
     } as any;
   }
 
-  useThenCatch(): ThenState<ReturnType | undefined> & CatchState
-  useThenCatch(initial: ReturnType): ThenState<ReturnType> & CatchState
-  useThenCatch(initial?: ReturnType) {
+  /**
+   * Creates React states for the method's return value and error messages.
+   * Sets the default Then function and the default errorCatcher. 
+   * MODIFIES THE CURRENT FetcherCatcher instance.
+   * 
+   * Combines useThen and useCatch.
+   * @param initial initial value of the `result` constant. 
+   */
+  useThenCatch<InitialT extends ReturnType | undefined = undefined>(initial?: InitialT) {
     return {
       ...this.useCatch(),
-      ...this.useThen(initial as any),
-    } as any;
+      ...this.useThen(initial),
+    };
   }
 
 
-  static options<ReturnType, AType>(arg: any): FetchCatchOptions<ReturnType, AType> {
+  /**
+   * 
+   * Use this for creating a custom fetchCatch function.
+   * @param initial initial value of the `result` constant. 
+   */
+  static options<ReturnType, AType, BeforeType>(arg: any): FetchCatchOptions<ReturnType, AType, BeforeType> {
     if (typeof arg !== "function")
       return arg;
     return {
@@ -329,6 +401,9 @@ export class FetcherCatcher<ReturnType, AType>{
   }
 }
 
-export const fetchCatch: FetchCatchFactory = <ReturnType, AType>(arg?: any) => {
-  return new FetcherCatcher<ReturnType, AType>(fetchCatch, FetcherCatcher.options(arg));
+/**
+ * FetcherCatcher factory
+ */
+export const fetchCatch: FetchCatchFactory = <ReturnType, AType, BeforeType = void>(arg?: any) => {
+  return new FetcherCatcher<ReturnType, AType, BeforeType>(fetchCatch, FetcherCatcher.options(arg));
 }
