@@ -21,25 +21,6 @@ export type APIObject<T extends APIValidationObject, K extends keyof T = keyof T
   [P in K]: (args: z.infer<T[P]>) => Promise<any>
 };
 
-function invalidResponse(message: string, args: string[] = []): InvalidResult {
-  return [
-    {
-      message,
-      args,
-      statusCode: 400,
-      preferredErrorDisplay: "form",
-      invalidFields: {}
-    }, {
-      status: 400
-    }
-  ]
-}
-
-export function typeExpectedMessage(expectedType: string, got: any) {
-  return `expected to be '${expectedType}' got ${typeof got}: '${got}'`;
-}
-
-
 export type ZodSolver = (err: ZodError) => JSONErrorResponse;
 
 const defaultZodSolver: ZodSolver = (err) => {
@@ -347,7 +328,7 @@ export function httpListener<T extends APIValidationObject, K extends keyof T = 
       }
 
       if (!requestObject.args || !requestObject.method) {
-        const err = ResponseError.createWithStatus(400, "method or args are missing");
+        const err = ResponseError.createWithStatus(400, "Method or args are missing");
         return [err.response, 400];
       }
 

@@ -1,4 +1,3 @@
-import { APIObject } from "./rpc";
 
 
 function getResponseErrorPromise(res: Response): Promise<JSONErrorResponse> {
