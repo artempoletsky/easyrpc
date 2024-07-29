@@ -1,16 +1,26 @@
 
 
+export function textToJSONErrorResponse(str: string, status: number): JSONErrorResponse {
+  let res: JSONErrorResponse;
+  try {
+    res = JSON.parse(str);
+  } catch (err) {
+    return {
+      message: "Unknown error occured {...}",
+      args: [status + ""],
+      preferredErrorDisplay: "form",
+      invalidFields: {},
+      statusCode: status
+    }
+  }
+  return res;
+}
+
 function getResponseErrorPromise(res: Response): Promise<JSONErrorResponse> {
 
   return new Promise((resolve, reject) => {
     res.json().then(resolve as any).catch(e => {
-      resolve({
-        message: "Unknown error occured {...}",
-        args: [res.status + ""],
-        preferredErrorDisplay: "form",
-        invalidFields: {},
-        statusCode: res.status
-      });
+      resolve(textToJSONErrorResponse("", res.status));
     });
   });
 }
@@ -39,6 +49,117 @@ export function getAPIMethod<MethodType extends APIMethod = () => Promise<any>>
       return getResponseErrorPromise(res).then(e => { throw e });
     });
   }
+}
+
+
+export function packUploadArguments(arg: Record<string, any>): {
+  files: File[];
+  args: string;
+  filePaths: string;
+} {
+
+  const files: File[] = [];
+
+  const filesPaths: string[] = [];
+
+  const recur = (current: any, path: string[]): any => {
+    if (typeof current != "object") {
+      return current;
+    }
+
+    if (current instanceof File) {
+      const result = `file[${files.length}]`;
+      files.push(current);
+      filesPaths.push(path.join("/"));
+      return result;
+    }
+
+    if (current instanceof Array) {
+      return current.map((el, i) => recur(el, [...path, i + ""]));
+    }
+
+    const result: Record<string, any> = {};
+    for (const key in current) {
+      result[key] = recur(current[key], [...path, key]);
+    }
+    return result;
+  }
+
+  const queryRes: Record<string, any> = recur(arg, []);
+  return {
+    files,
+    args: JSON.stringify(queryRes),
+    filePaths: JSON.stringify(filesPaths),
+  };
+}
+
+export function createUploadFormData(arg: Record<string, any>): FormData {
+  const { files, args, filePaths } = packUploadArguments(arg);
+  var data = new FormData();
+
+  for (const f of files) {
+    data.append("files", f);
+  }
+  data.append("args", args);
+  data.append("filePaths", filePaths);
+  return data;
+}
+
+export function getUploadMethod(route: string, method: string) {
+
+  let onProgress = (progress: number, event: ProgressEvent<XMLHttpRequestEventTarget>) => {
+
+  }
+
+  let onUploadingChange = (isUploading: boolean) => {
+
+  }
+  const result = (arg: Record<string, any>) => {
+    const xhr = new XMLHttpRequest();
+
+    onUploadingChange(true);
+
+    xhr.upload.addEventListener("progress", (event) => {
+      const progressNum = Math.floor(100 * (event.loaded / event.total));
+      onProgress(progressNum, event);
+    });
+
+    const fd = createUploadFormData(arg);
+    fd.append("method", method);
+    xhr.open("POST", route, true);
+    xhr.send(fd);
+
+    return new Promise((resolve, reject) => {
+      xhr.addEventListener("loadend", (e) => {
+        onUploadingChange(false);
+
+        if (xhr.status != 200) {
+          reject(textToJSONErrorResponse(xhr.responseText, xhr.status))
+          return;
+        }
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch (err: any) {
+          reject({
+            message: "Invalid JSON {...}",
+            args: [err.toString()],
+            invalidFields: {},
+            preferredErrorDisplay: "both",
+            statusCode: 200,
+          } satisfies JSONErrorResponse);
+        }
+      });
+    });
+  }
+
+  result.onProgress = (cb: typeof onProgress) => {
+    onProgress = cb;
+  };
+
+  result.onUploadingChange = (cb: typeof onUploadingChange) => {
+    onUploadingChange = cb;
+  };
+  return result;
 }
 
 
@@ -128,5 +249,12 @@ export function RPC<PKG extends Record<string, APIMethod>>(route: string, fetchO
     hackRoute<T extends keyof PKG>(name: T): PKG[T] {
       return (route + "?" + (name as string)) as any;
     },
+
+    upload<T extends keyof PKG>(name: T): PKG[T] & {
+      onProgress: (cb: (progress: number, event: ProgressEvent<XMLHttpRequestEventTarget>) => void) => void;
+      onUploadingChange: (cb: (isUploading: boolean) => void) => void;
+    } {
+      return getUploadMethod(route, name as string) as any;
+    }
   }
 }

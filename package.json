@@ -1,6 +1,6 @@
 {
   "name": "@artempoletsky/easyrpc",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "API library",
   "types": "build/rpc.d.ts",
   "main": "build/rpc.js",

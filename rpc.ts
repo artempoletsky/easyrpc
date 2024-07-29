@@ -262,8 +262,16 @@ try {
 export function NextPOST<T extends APIValidationObject, K extends keyof T = keyof T>(rules: T, api: APIObject<T, K>) {
   if (!NextResponse) throw new Error("Failed to require NextResponse");
 
-  return async function (req: any) {
-    let [a, b] = await validate(await req.json(), rules, api);
+  return async function (request: any) {
+    let req: any;
+    try {
+      req = await requestToRPCRequest(request);
+    } catch (err) {
+      return NextResponse.json(err, {
+        status: (<JSONErrorResponse>err).statusCode
+      });
+    }
+    let [a, b] = await validate(req, rules, api);
     return NextResponse.json(a, b);
   }
 }
@@ -338,4 +346,98 @@ export function httpListener<T extends APIValidationObject, K extends keyof T = 
       return [httpGetFallback ?? `EasyRPC server (${pkg.version})`, 200];
     }
   }
+}
+
+
+const ZArrStr = z.array(z.string().min(1));
+
+
+export function setByPath(object: any, path: string[], value: any) {
+  let current = object;
+  for (let i = 0; i < path.length; i++) {
+    let key: string | number = path[i];
+    let next;
+    if (current[key] !== undefined) {
+      next = current[key];
+    } else {
+      key = parseInt(key);
+      if (current[key] === undefined) {
+        throw new Error("Invalid path");
+      }
+      next = current[key];
+    }
+
+
+    if (i == path.length - 1) {
+      current[key] = value;
+      return;
+    }
+    current = next;
+  }
+
+  throw new Error("Invalid path");
+}
+
+export async function requestToRPCRequest(request: Request): Promise<APIRequest<Record<string, any>>> {
+  const contentType = request.headers.get("content-type");
+  const isJson = contentType == "application/json";
+  let result: APIRequest<Record<string, any>>;
+  if (isJson) {
+    try {
+      result = await request.json();
+    } catch (err) {
+      throw ResponseError.createWithStatus(400, "Invalid JSON request body");
+    }
+  } else {
+    let fd: FormData;
+    try {
+      fd = await request.formData();
+    } catch (err) {
+      throw ResponseError.createWithStatus(400, "Invalid FormData request body");
+    }
+
+    const argsStr = fd.get("args") as string;
+    if (!argsStr) throw ResponseError.createWithStatus(400, "Invalid FormData request body");
+
+    let args;
+    try {
+      args = JSON.parse(argsStr);
+    } catch (err) {
+      throw ResponseError.createWithStatus(400, "Invalid FormData request body");
+    }
+
+    const files = fd.getAll("files");
+    const filePathsStr = fd.get("filePaths") as string;
+
+    if (filePathsStr) {
+      let filePaths: string[];
+      try {
+        filePaths = JSON.parse(filePathsStr);
+      } catch (err) {
+        throw ResponseError.createWithStatus(400, "Invalid filePaths");
+      }
+      const zRes = ZArrStr.safeParse(filePaths);
+      if (!zRes.success)
+        throw ResponseError.createWithStatus(400, "Invalid filePaths");
+
+      filePaths = zRes.data;
+      for (let i = 0; i < filePaths.length; i++) {
+        const path = filePaths[i].split("/");
+        if (!files[i]) throw ResponseError.createWithStatus(400, "Invalid files");
+        try {
+          setByPath(args, path, files[i]);
+        } catch (err) {
+          throw ResponseError.createWithStatus(400, "Invalid filePaths");
+        }
+      }
+    }
+    result = {
+      method: fd.get("method") as string,
+      args,
+    };
+  }
+
+  if (!result.method) throw ResponseError.createWithStatus(400, "Method is required");
+  if (!result.args) throw ResponseError.createWithStatus(400, "Arguments are required");
+  return result;
 }
